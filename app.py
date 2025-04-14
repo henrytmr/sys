@@ -2,10 +2,12 @@ import os
 import subprocess
 import uuid
 import shlex
+import logging
 from flask import Flask, render_template, request, jsonify, session
 from flask_session import Session
 from werkzeug.utils import secure_filename
 
+# Configuración inicial
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {'py'}
 SAFE_COMMANDS = {'ls', 'cat', 'pwd', 'echo', 'mkdir', 'cd', 'python3'}
@@ -16,12 +18,15 @@ app = Flask("consola_web")
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["SESSION_TYPE"] = "filesystem"
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB máximo
 Session(app)
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 user_sessions = {}
 
+# Funciones auxiliares
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -31,6 +36,7 @@ def validate_python_code(code):
 def clean_history(history):
     return history[-MAX_HISTORY_LINES:] if len(history) > MAX_HISTORY_LINES else history
 
+# Rutas
 @app.route("/", methods=["GET"])
 def index():
     try:
@@ -44,11 +50,10 @@ def index():
                 "cwd": os.getcwd()
             }
         
-        session_id = session["session_id"]
-        user = user_sessions.get(session_id)
         files = os.listdir(UPLOAD_FOLDER)
         return render_template("index.html", output="", files=files)
     except Exception as e:
+        logging.error(f"Error en index: {str(e)}")
         return render_template("error.html", error="Error inicializando sesión")
 
 @app.route("/execute", methods=["POST"])
@@ -70,7 +75,6 @@ def execute():
             user["history"] = []
             return jsonify({"output": "", "history": user["history"]})
         
-        # Validación de comandos
         output = ""
         try:
             if mode == "bash":
@@ -122,6 +126,7 @@ def execute():
         return jsonify({"output": output, "history": user["history"]})
     
     except Exception as e:
+        logging.error(f"Error en execute: {str(e)}")
         return jsonify({"error": "Error interno del servidor"}), 500
 
 @app.route("/upload", methods=["POST"])
@@ -141,6 +146,7 @@ def upload_file():
             return jsonify({'success': f'Archivo {filename} subido correctamente'})
         return jsonify({'error': 'Solo se permiten archivos .py'}), 400
     except Exception as e:
+        logging.error(f"Error en upload: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route("/run/<filename>")
@@ -171,18 +177,35 @@ def run_file(filename):
         
         return jsonify({'output': output})
     except Exception as e:
+        logging.error(f"Error en run: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route("/delete/<filename>")
+@app.route("/delete/<filename>", methods=["DELETE"])
 def delete_file(filename):
     try:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
-        if os.path.exists(filepath):
+        safe_filename = secure_filename(filename)
+        if not safe_filename or safe_filename != filename:
+            logging.warning(f"Intento de borrado con nombre inválido: {filename}")
+            return jsonify({'error': 'Nombre de archivo inválido'}), 400
+            
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+        
+        if not os.path.isfile(filepath):
+            return jsonify({'error': 'Archivo no encontrado'}), 404
+            
+        try:
             os.remove(filepath)
-            return jsonify({'success': f'Archivo {filename} eliminado'})
-        return jsonify({'error': 'Archivo no encontrado'}), 404
+            logging.info(f"Archivo {safe_filename} eliminado correctamente")
+            return jsonify({'success': f'Archivo {safe_filename} eliminado'})
+        except PermissionError:
+            logging.error(f"Error de permisos al eliminar {safe_filename}")
+            return jsonify({'error': 'Error de permisos'}), 500
+        except Exception as e:
+            logging.error(f"Error eliminando archivo: {str(e)}")
+            return jsonify({'error': 'Error al eliminar el archivo'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error general en delete: {str(e)}")
+        return jsonify({'error': 'Error interno del servidor'}), 500
 
 if __name__ == "__main__":
     app.run(debug=False)

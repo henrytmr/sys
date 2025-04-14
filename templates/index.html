@@ -69,12 +69,7 @@
                 updateHistory(data.history);
                 document.getElementById('command').value = '';
             } catch (error) {
-                const historyDiv = document.getElementById('history');
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'history-line error';
-                errorDiv.textContent = `Error: ${error.message}`;
-                historyDiv.appendChild(errorDiv);
-                historyDiv.scrollTop = historyDiv.scrollHeight;
+                showError(error.message);
             }
         }
 
@@ -88,22 +83,15 @@
 
         async function runFile(filename) {
             try {
-                const response = await fetch(`/run/${filename}`);
+                const response = await fetch(`/run/${encodeURIComponent(filename)}`);
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.error || 'Error al ejecutar');
                 }
-                
                 const result = await response.json();
-                const historyDiv = document.getElementById('history');
-                const newEntry = `$ python ${filename}\n${result.output}`;
-                const div = document.createElement('div');
-                div.className = 'history-line';
-                div.innerHTML = newEntry.replace(/\n/g, '<br>');
-                historyDiv.appendChild(div);
-                historyDiv.scrollTop = historyDiv.scrollHeight;
+                appendToHistory(`$ python ${filename}\n${result.output}`);
             } catch (error) {
-                alert(`Error: ${error.message}`);
+                showError(error.message);
             }
         }
 
@@ -111,27 +99,30 @@
             if (!confirm(`¿Borrar ${filename}?`)) return;
             
             try {
-                const response = await fetch(`/delete/${filename}`);
+                const response = await fetch(`/delete/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.error || 'Error al borrar');
                 }
                 
                 const result = await response.json();
-                alert(result.success);
-                window.location.reload();
+                removeFileFromDOM(filename);
+                showSuccess(result.success);
             } catch (error) {
-                alert(`Error: ${error.message}`);
+                showError(error.message);
+                setTimeout(() => window.location.reload(), 2000);
             }
         }
 
         async function uploadFile(input) {
             if (!input.files[0]) return;
             
-            const formData = new FormData();
-            formData.append('archivo', input.files[0]);
-            
             try {
+                const formData = new FormData();
+                formData.append('archivo', input.files[0]);
                 const response = await fetch('/upload', {
                     method: 'POST',
                     body: formData
@@ -143,11 +134,48 @@
                 }
                 
                 const result = await response.json();
-                alert(result.success);
+                showSuccess(result.success);
                 window.location.reload();
             } catch (error) {
-                alert(`Error: ${error.message}`);
+                showError(error.message);
             }
+        }
+
+        // Funciones auxiliares
+        function appendToHistory(content) {
+            const historyDiv = document.getElementById('history');
+            const div = document.createElement('div');
+            div.className = 'history-line';
+            div.innerHTML = content.replace(/\n/g, '<br>');
+            historyDiv.appendChild(div);
+            historyDiv.scrollTop = historyDiv.scrollHeight;
+        }
+
+        function removeFileFromDOM(filename) {
+            document.querySelectorAll('.file-item').forEach(item => {
+                if (item.querySelector('.filename').textContent === filename) {
+                    item.classList.add('deleting');
+                    setTimeout(() => item.remove(), 300);
+                }
+            });
+        }
+
+        function showSuccess(message) {
+            const historyDiv = document.getElementById('history');
+            const div = document.createElement('div');
+            div.className = 'history-line success';
+            div.textContent = message;
+            historyDiv.appendChild(div);
+            historyDiv.scrollTop = historyDiv.scrollHeight;
+        }
+
+        function showError(message) {
+            const historyDiv = document.getElementById('history');
+            const div = document.createElement('div');
+            div.className = 'history-line error';
+            div.textContent = `Error: ${message}`;
+            historyDiv.appendChild(div);
+            historyDiv.scrollTop = historyDiv.scrollHeight;
         }
     </script>
 </body>
