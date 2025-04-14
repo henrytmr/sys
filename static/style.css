@@ -79,23 +79,24 @@ body {
     background: rgba(220, 53, 69, 0.05);
 }
 
-/* Input */
 .input-area {
     display: flex;
     gap: 6px;
     align-items: center;
     padding-top: 8px;
+    width: 100%; /* Asegura que ocupe todo el ancho disponible */
 }
 
-#command {
-    flex: 1;
-    padding: 6px 10px;
-    background: #1a1a1a;
-    border: 1px solid #3d3d3d;
-    color: var(--text-primary);
-    font-size: 0.9em;
+#execute {
+    flex: 0 0 18%; /* Botón ocupa el 18% (2% restante es el gap) */
+    background: var(--success);
+    color: white;
+    padding: 6px 12px;
+    border: none;
     border-radius: 3px;
-    transition: border-color 0.2s;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap; /* Evita que el texto del botón se divida */
 }
 
 #command:focus {
