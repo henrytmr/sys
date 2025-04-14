@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consola Web</title>
+    <title>Consola Web Pro</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -19,16 +19,16 @@
                 {% endfor %}
             </div>
             <div class="input-area">
-                <input type="text" id="commandInput" placeholder="Ingrese comando...">
-                <button id="executeBtn">Ejecutar</button>
+                <input type="text" id="commandInput" placeholder="Ingrese comando..." class="command-input">
+                <button id="executeBtn" class="btn">Ejecutar</button>
             </div>
         </div>
         
         <div class="files-panel">
             <div class="upload-section">
                 <input type="file" id="fileInput" hidden accept=".py">
-                <button class="btn" id="uploadBtn">
-                    ðŸ“¤ Subir Script
+                <button class="btn accent" id="uploadBtn">
+                    Subir Script
                 </button>
             </div>
             <div class="file-list">
@@ -36,8 +36,8 @@
                     <div class="file-item">
                         <span class="filename">{{ file }}</span>
                         <div class="actions">
-                            <button class="btn run" data-file="{{ file }}">â–¶ Ejecutar</button>
-                            <button class="btn delete" data-file="{{ file }}">ðŸ—‘ Borrar</button>
+                            <button class="btn primary run" data-file="{{ file }}">Ejecutar</button>
+                            <button class="btn danger delete" data-file="{{ file }}">Borrar</button>
                         </div>
                     </div>
                 {% endfor %}
@@ -51,11 +51,17 @@
         const historyDiv = document.getElementById('history');
         const commandInput = document.getElementById('commandInput');
         const executeBtn = document.getElementById('executeBtn');
-        const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
 
-        // Manejo de comandos
-        async function executeCommand() {
+        // Animación de entrada para nuevos comandos
+        const observer = new MutationObserver(() => {
+            historyDiv.scrollTop = historyDiv.scrollHeight;
+        });
+
+        observer.observe(historyDiv, { childList: true });
+
+        // Manejo mejorado de comandos
+        const executeCommand = async () => {
             const command = commandInput.value.trim();
             if (!command) return;
             
@@ -77,24 +83,73 @@
                 
                 updateHistory(data.history);
                 commandInput.value = '';
-                historyDiv.scrollTop = historyDiv.scrollHeight;
             } catch (error) {
                 showError(error.message);
             }
-        }
+        };
 
-        function updateHistory(history) {
+        // Función de actualización de historial
+        const updateHistory = (history) => {
             historyDiv.innerHTML = history.map(item => `
                 <div class="command-block">
                     <div class="command">$ ${item.command}</div>
                     <pre class="output">${item.output}</pre>
                 </div>
             `).join('');
-        }
+        };
 
-        // Subida de archivos
-        uploadBtn.addEventListener('click', () => fileInput.click());
-        
+        // Manejo mejorado de archivos
+        document.querySelectorAll('.delete').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const filename = btn.dataset.file;
+                const { isConfirmed } = await Swal.fire({
+                    title: 'Confirmar borrado',
+                    html: `<p>¿Borrar permanentemente <strong>${filename}</strong>?</p>`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: var(--danger),
+                    cancelButtonColor: var(--text),
+                    confirmButtonText: 'Borrar',
+                    cancelButtonText: 'Cancelar',
+                    background: var(--bg),
+                    customClass: {
+                        popup: 'custom-swal'
+                    }
+                });
+                
+                if (isConfirmed) {
+                    try {
+                        const response = await fetch(`/delete/${filename}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (!response.ok) throw new Error(result.error);
+                        
+                        Swal.fire({
+                            icon: 'success',
+                            title: '¡Eliminado!',
+                            text: result.success,
+                            background: var(--bg),
+                            customClass: {
+                                popup: 'custom-swal'
+                            }
+                        });
+                        window.location.reload();
+                    } catch (error) {
+                        showError(error.message);
+                    }
+                }
+            });
+        });
+
+        // Event listeners mejorados
+        executeBtn.addEventListener('click', executeCommand);
+        commandInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') executeCommand();
+        });
+
         fileInput.addEventListener('change', async (e) => {
             if (!e.target.files[0]) return;
             
@@ -111,60 +166,33 @@
                 
                 if (!response.ok) throw new Error(result.error);
                 
-                Swal.fire({
+                await Swal.fire({
                     icon: 'success',
-                    title: 'Ã‰xito',
-                    text: result.success
-                }).then(() => window.location.reload());
-                
+                    title: '¡Subido!',
+                    text: result.success,
+                    background: var(--bg),
+                    customClass: {
+                        popup: 'custom-swal'
+                    }
+                });
+                window.location.reload();
             } catch (error) {
                 showError(error.message);
             }
         });
 
-        // Manejo de archivos
-        document.querySelectorAll('.delete').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const filename = btn.dataset.file;
-                const confirm = await Swal.fire({
-                    title: 'Â¿Borrar archivo?',
-                    text: `Â¿Eliminar ${filename}?`,
-                    icon: 'warning',
-                    showCancelButton: true
-                });
-                
-                if (confirm.isConfirmed) {
-                    try {
-                        const response = await fetch(`/delete/${filename}`, {
-                            method: 'DELETE'
-                        });
-                        
-                        const result = await response.json();
-                        
-                        if (!response.ok) throw new Error(result.error);
-                        
-                        Swal.fire('Â¡Eliminado!', result.success, 'success');
-                        window.location.reload();
-                    } catch (error) {
-                        showError(error.message);
-                    }
-                }
-            });
-        });
-
-        // Eventos
-        executeBtn.addEventListener('click', executeCommand);
-        commandInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') executeCommand();
-        });
-
-        function showError(message) {
+        // Función de manejo de errores
+        const showError = (message) => {
             Swal.fire({
                 icon: 'error',
-                title: 'Error',
-                text: message
+                title: '¡Error!',
+                text: message,
+                background: var(--bg),
+                customClass: {
+                    popup: 'custom-swal'
+                }
             });
-        }
+        };
     });
     </script>
 </body>
