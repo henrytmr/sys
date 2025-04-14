@@ -3,7 +3,7 @@ services:
     name: consola-web
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --workers 2 --timeout 120 --preload app:app
+    startCommand: gunicorn --workers 4 --preload app:app
     runtime: python
     pythonVersion: 3.11
     envVars:

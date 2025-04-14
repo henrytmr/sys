@@ -1,180 +1,143 @@
 body {
+    background: #0d0d0d;
+    color: #00ff00;
     font-family: 'Courier New', monospace;
-    background-color: #1a1a1a;
-    color: #e0e0e0;
     margin: 0;
-    padding: 10px;
+    padding: 20px;
+    min-height: 100vh;
 }
 
 .container {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    max-width: 100%;
-    padding: 10px;
-}
-
-@media (min-width: 768px) {
-    .container {
-        flex-direction: row;
-        max-width: 1200px;
-        margin: 0 auto;
-    }
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .console {
-    flex: 2;
-    background: #252525;
+    background: #000;
+    border: 2px solid #00ff00;
     border-radius: 5px;
-    padding: 15px;
-    min-height: 300px;
-    max-height: 70vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    padding: 20px;
+    height: 80vh;
+    overflow-y: auto;
 }
 
 .history {
-    flex: 1;
-    overflow-y: auto;
-    background: #1e1e1e;
-    padding: 10px;
-    border-radius: 3px;
-    margin-bottom: 10px;
-    font-size: 13px;
-}
-
-.history-line {
-    margin: 5px 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    line-height: 1.4;
-}
-
-.history-line.error {
-    color: #dc3545;
-    font-weight: bold;
-    background: rgba(220, 53, 69, 0.1);
-    padding: 5px;
-    border-radius: 3px;
-}
-
-.history-line.success {
-    color: #28a745;
-    font-weight: bold;
-    background: rgba(40, 167, 69, 0.1);
-    padding: 5px;
-    border-radius: 3px;
+    margin-bottom: 15px;
 }
 
 .input-area {
     display: flex;
-    gap: 8px;
+    gap: 10px;
+    position: sticky;
+    bottom: 0;
+    background: #000;
+    padding: 10px 0;
 }
 
 #command {
     flex: 1;
-    padding: 8px 12px;
-    background: #333;
-    border: 1px solid #444;
-    border-radius: 3px;
-    color: #fff;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
+    background: #000;
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    padding: 12px;
+    font-size: 14px;
 }
 
-#execute {
-    background: #28a745;
-    color: white;
-    padding: 8px 15px;
+button {
+    background: #00ff00;
+    color: #000;
     border: none;
-    border-radius: 3px;
+    padding: 12px 24px;
     cursor: pointer;
-    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    transition: opacity 0.3s;
 }
 
-#execute:hover {
-    opacity: 0.9;
+button:hover {
+    opacity: 0.8;
 }
 
-.files {
-    flex: 1;
-    background: #252525;
+.file-manager {
+    background: #000;
+    border: 2px solid #00ff00;
     border-radius: 5px;
-    padding: 15px;
-    max-height: 70vh;
+    padding: 20px;
+    height: 80vh;
     overflow-y: auto;
 }
 
-.file-actions {
-    margin-bottom: 15px;
-}
-
-.upload-btn {
-    background: #6f42c1;
-    color: white;
-    padding: 8px 12px;
-    border: none;
-    border-radius: 3px;
-    width: 100%;
-    cursor: pointer;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-}
-
-.upload-btn:hover {
-    opacity: 0.9;
-}
-
 .file-list {
+    margin-top: 15px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .file-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #333;
-    padding: 8px 10px;
-    border-radius: 3px;
-    font-size: 13px;
-    transition: all 0.3s ease;
-}
-
-.file-item.deleting {
-    opacity: 0.5;
-    background: rgba(220, 53, 69, 0.1);
+    background: #1a1a1a;
+    padding: 12px;
+    border-radius: 4px;
 }
 
 .filename {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1;
+    max-width: 200px;
 }
 
 .btn-group {
     display: flex;
-    gap: 5px;
-}
-
-.btn-run, .btn-delete {
-    padding: 5px 8px;
-    border: none;
-    border-radius: 2px;
-    cursor: pointer;
-    font-size: 12px;
-    font-family: 'Courier New', monospace;
+    gap: 8px;
 }
 
 .btn-run {
     background: #28a745;
-    color: white;
 }
 
 .btn-delete {
     background: #dc3545;
-    color: white;
+}
+
+.command-line {
+    color: #00ff00;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.output {
+    color: #ffffff;
+    margin-bottom: 15px;
+    white-space: pre-wrap;
+}
+
+.success-message {
+    color: #28a745;
+    padding: 10px;
+    border-left: 3px solid #28a745;
+    margin: 10px 0;
+}
+
+.error-message {
+    color: #dc3545;
+    padding: 10px;
+    border-left: 3px solid #dc3545;
+    margin: 10px 0;
+}
+
+@media (max-width: 768px) {
+    .container {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+    
+    .console, .file-manager {
+        height: 50vh;
+    }
 }

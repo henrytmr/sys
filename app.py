@@ -7,36 +7,15 @@ from flask import Flask, render_template, request, jsonify, session
 from flask_session import Session
 from werkzeug.utils import secure_filename
 
-# Configuración inicial
-UPLOAD_FOLDER = "uploads"
-ALLOWED_EXTENSIONS = {'py'}
-SAFE_COMMANDS = {'ls', 'cat', 'pwd', 'echo', 'mkdir', 'cd', 'python3'}
-BLACKLISTED_PYTHON = ['subprocess', 'os.system', 'open(', 'import os', 'eval', 'exec', 'compile']
-MAX_HISTORY_LINES = 100
-
 app = Flask("consola_web")
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta")
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["SESSION_TYPE"] = "filesystem"
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB máximo
 Session(app)
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 user_sessions = {}
 
-# Funciones auxiliares
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def validate_python_code(code):
-    return not any(keyword in code for keyword in BLACKLISTED_PYTHON)
-
-def clean_history(history):
-    return history[-MAX_HISTORY_LINES:] if len(history) > MAX_HISTORY_LINES else history
-
-# Rutas
 @app.route("/", methods=["GET"])
 def index():
     try:
@@ -44,16 +23,14 @@ def index():
             session_id = str(uuid.uuid4())
             session["session_id"] = session_id
             user_sessions[session_id] = {
-                "globals": {},
                 "history": [],
-                "mode": "bash",
                 "cwd": os.getcwd()
             }
         
-        files = os.listdir(UPLOAD_FOLDER)
-        return render_template("index.html", output="", files=files)
+        files = os.listdir(app.config['UPLOAD_FOLDER'])
+        return render_template("index.html", files=files)
     except Exception as e:
-        logging.error(f"Error en index: {str(e)}")
+        logging.error(f"Error inicial: {str(e)}")
         return render_template("error.html", error="Error inicializando sesión")
 
 @app.route("/execute", methods=["POST"])
@@ -65,7 +42,6 @@ def execute():
             
         data = request.get_json()
         command = data.get("command", "").strip()
-        mode = data.get("mode", "bash")
         user = user_sessions[session_id]
 
         if not command:
@@ -75,56 +51,27 @@ def execute():
             user["history"] = []
             return jsonify({"output": "", "history": user["history"]})
         
-        output = ""
         try:
-            if mode == "bash":
-                base_cmd = command.split()[0]
-                if base_cmd not in SAFE_COMMANDS:
-                    output = f"Error: Comando '{base_cmd}' no permitido"
-                else:
-                    if command.startswith("cd "):
-                        new_dir = command[3:].strip()
-                        try:
-                            os.chdir(new_dir)
-                            user["cwd"] = os.getcwd()
-                            output = f"Directorio cambiado a: {user['cwd']}"
-                        except Exception as e:
-                            output = f"Error: {str(e)}"
-                    else:
-                        process = subprocess.Popen(
-                            shlex.split(command),
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True,
-                            cwd=user.get("cwd", os.getcwd())
-                        )
-                        try:
-                            stdout, stderr = process.communicate(timeout=10)
-                            output = stdout + stderr
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                            output = "Error: Tiempo de ejecución excedido (10s)"
+            process = subprocess.Popen(
+                shlex.split(command),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=user.get("cwd", os.getcwd())
+            )
             
-            elif mode == "python":
-                if not validate_python_code(command):
-                    output = "Error: Código contiene operaciones no permitidas"
-                else:
-                    local_ctx = user["globals"]
-                    try:
-                        exec(command, local_ctx)
-                        output = str(local_ctx.get("_", "")) or "Comando ejecutado."
-                    except Exception as e:
-                        output = f"Error de Python: {str(e)}"
-            else:
-                output = "Modo inválido."
-        
+            stdout, stderr = process.communicate()
+            output = stdout + stderr
+            
+            if process.returncode != 0:
+                output += f"\n[Código de salida: {process.returncode}]"
+            
         except Exception as e:
             output = f"Error: {str(e)}"
         
         user["history"].append(f"$ {command}\n{output}")
-        user["history"] = clean_history(user["history"])
         return jsonify({"output": output, "history": user["history"]})
-    
+        
     except Exception as e:
         logging.error(f"Error en execute: {str(e)}")
         return jsonify({"error": "Error interno del servidor"}), 500
@@ -132,80 +79,39 @@ def execute():
 @app.route("/upload", methods=["POST"])
 def upload_file():
     try:
-        if 'archivo' not in request.files:
-            return jsonify({'error': 'No se seleccionó archivo'}), 400
-        
         file = request.files['archivo']
-        if file.filename == '':
-            return jsonify({'error': 'Nombre de archivo vacío'}), 400
-        
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            return jsonify({'success': f'Archivo {filename} subido correctamente'})
-        return jsonify({'error': 'Solo se permiten archivos .py'}), 400
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        return jsonify({'success': f'Archivo {filename} subido correctamente'})
     except Exception as e:
-        logging.error(f"Error en upload: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route("/run/<filename>")
-def run_file(filename):
-    try:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'Archivo no encontrado'}), 404
-            
-        process = subprocess.Popen(
-            ['python3', filepath],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        try:
-            stdout, stderr = process.communicate(timeout=30)
-            output = stdout + stderr
-        except subprocess.TimeoutExpired:
-            process.kill()
-            output = "Error: Tiempo de ejecución excedido (30s)"
-        
-        if "session_id" in session:
-            user = user_sessions.get(session["session_id"])
-            if user:
-                user["history"].append(f"$ python {filename}\n{output}")
-                user["history"] = clean_history(user["history"])
-        
-        return jsonify({'output': output})
-    except Exception as e:
-        logging.error(f"Error en run: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route("/delete/<filename>", methods=["DELETE"])
 def delete_file(filename):
     try:
         safe_filename = secure_filename(filename)
-        if not safe_filename or safe_filename != filename:
-            logging.warning(f"Intento de borrado con nombre inválido: {filename}")
-            return jsonify({'error': 'Nombre de archivo inválido'}), 400
-            
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
-        
-        if not os.path.isfile(filepath):
-            return jsonify({'error': 'Archivo no encontrado'}), 404
-            
-        try:
-            os.remove(filepath)
-            logging.info(f"Archivo {safe_filename} eliminado correctamente")
-            return jsonify({'success': f'Archivo {safe_filename} eliminado'})
-        except PermissionError:
-            logging.error(f"Error de permisos al eliminar {safe_filename}")
-            return jsonify({'error': 'Error de permisos'}), 500
-        except Exception as e:
-            logging.error(f"Error eliminando archivo: {str(e)}")
-            return jsonify({'error': 'Error al eliminar el archivo'}), 500
+        os.remove(filepath)
+        return jsonify({'success': f'Archivo {safe_filename} eliminado'})
     except Exception as e:
-        logging.error(f"Error general en delete: {str(e)}")
-        return jsonify({'error': 'Error interno del servidor'}), 500
+        return jsonify({'error': str(e)}), 500
+
+@app.route("/run/<filename>", methods=["POST"])
+def run_file(filename):
+    try:
+        safe_filename = secure_filename(filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+        process = subprocess.Popen(
+            ['python3', filepath],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        stdout, stderr = process.communicate()
+        output = stdout + stderr
+        return jsonify({'output': output})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(host='0.0.0.0', port=5000)
