@@ -14,10 +14,14 @@ app = Flask("consola_web")
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["SESSION_TYPE"] = "filesystem"
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB
 Session(app)
 
-logging.basicConfig(filename='app.log', level=logging.ERROR)
+logging.basicConfig(
+    filename='app.log',
+    level=logging.ERROR,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 user_sessions = {}
 
@@ -32,7 +36,6 @@ def index():
             user_sessions[session["session_id"]] = {
                 "globals": {},
                 "history": [],
-                "mode": "bash",
                 "cwd": os.getcwd()
             }
         files = os.listdir(UPLOAD_FOLDER)
@@ -46,58 +49,42 @@ def execute():
     try:
         data = request.get_json()
         command = data.get("command", "").strip()
-        mode = data.get("mode", "bash")
-        
-        if "session_id" not in session:
-            session["session_id"] = str(uuid.uuid4())
-            user_sessions[session["session_id"]] = {
-                "globals": {},
-                "history": [],
-                "mode": "bash",
-                "cwd": os.getcwd()
-            }
-            
-        user = user_sessions[session["session_id"]]
         
         if not command:
-            return jsonify({"output": "", "history": user["history"]})
-            
-        if command == "clear":
+            return jsonify({"output": "", "history": []})
+        
+        user = user_sessions[session["session_id"]]
+        
+        # Manejar comandos especiales
+        if command.lower() == "clear":
             user["history"] = []
-            return jsonify({"output": "", "history": user["history"]})
-            
+            return jsonify({"output": "", "history": []})
+        
+        if command.lower() == "dir":
+            command = "ls -l"
+        
         try:
-            if mode == "bash":
-                if command.startswith("cd "):
-                    new_dir = command[3:].strip()
-                    try:
-                        os.chdir(new_dir)
-                        user["cwd"] = os.getcwd()
-                        output = f"Directorio actual: {user['cwd']}"
-                    except Exception as e:
-                        output = f"cd: {str(e)}"
-                else:
-                    result = subprocess.run(
-                        shlex.split(command),
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                        cwd=user.get("cwd", os.getcwd())
-                    )
-                    output = result.stdout + result.stderr
-            elif mode == "python":
-                local_ctx = user["globals"]
-                exec(command, local_ctx)
-                output = local_ctx.get("_", "") or "Comando ejecutado."
+            if command.startswith("cd "):
+                new_dir = command[3:].strip()
+                os.chdir(new_dir)
+                user["cwd"] = os.getcwd()
+                output = f"Directorio actual: {user['cwd']}"
             else:
-                output = "Modo inválido."
+                result = subprocess.run(
+                    shlex.split(command),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    cwd=user.get("cwd", os.getcwd())
+                )
+                output = result.stdout + result.stderr
                 
         except subprocess.TimeoutExpired:
             output = "Error: Tiempo de ejecución excedido"
         except Exception as e:
             output = f"Error: {str(e)}"
-            
-        user["history"].append(f"$ {command}\n{output}")
+        
+        user["history"].append({"command": command, "output": output})
         return jsonify({"output": output, "history": user["history"]})
         
     except Exception as e:
@@ -108,50 +95,29 @@ def execute():
 def upload_file():
     try:
         if 'archivo' not in request.files:
-            return jsonify({'error': 'No file selected'}), 400
+            return jsonify({'error': 'No se seleccionó archivo'}), 400
             
         file = request.files['archivo']
         if file.filename == '':
-            return jsonify({'error': 'Empty filename'}), 400
+            return jsonify({'error': 'Nombre vacío'}), 400
+        
+        if not (file and allowed_file(file.filename)):
+            return jsonify({'error': 'Solo archivos .py'}), 400
             
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return jsonify({'success': f'{filename} subido correctamente'})
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        if os.path.exists(filepath):
+            return jsonify({'error': 'El archivo ya existe'}), 409
             
-        return jsonify({'error': 'Solo archivos .py permitidos'}), 400
+        file.save(filepath)
+        return jsonify({'success': f'{filename} subido'})
         
     except Exception as e:
         logging.error(f"Upload error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route("/run/<filename>")
-def run_file(filename):
-    try:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'Archivo no encontrado'}), 404
-            
-        result = subprocess.run(
-            ['python3', filepath],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        output = result.stdout + result.stderr
-        
-        if "session_id" in session:
-            user = user_sessions.get(session["session_id"])
-            if user:
-                user["history"].append(f"$ python {filename}\n{output}")
-                
-        return jsonify({'output': output})
-        
-    except Exception as e:
-        logging.error(f"Run error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route("/delete/<filename>")
+@app.route("/delete/<filename>", methods=["DELETE"])
 def delete_file(filename):
     try:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
@@ -163,3 +129,6 @@ def delete_file(filename):
     except Exception as e:
         logging.error(f"Delete error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)

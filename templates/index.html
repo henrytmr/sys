@@ -2,40 +2,42 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Consola Web</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consola Web</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
         <div class="console">
             <div class="history" id="history">
-                {% for line in output.split('\n') %}
-                    <pre class="history-line">{{ line }}</pre>
+                {% for item in history %}
+                    <div class="command-block">
+                        <div class="command">$ {{ item.command }}</div>
+                        <pre class="output">{{ item.output }}</pre>
+                    </div>
                 {% endfor %}
             </div>
             <div class="input-area">
-                <input type="text" id="command" placeholder="Escribe un comando..." autocomplete="off">
-                <button id="execute">Ejecutar</button>
+                <input type="text" id="commandInput" placeholder="Ingrese comando...">
+                <button id="executeBtn">Ejecutar</button>
             </div>
         </div>
         
         <div class="files-panel">
             <div class="upload-section">
                 <input type="file" id="fileInput" hidden accept=".py">
-                <button onclick="document.getElementById('fileInput').click()" class="btn-upload">
-                    Subir Script
+                <button class="btn" id="uploadBtn">
+                    📤 Subir Script
                 </button>
             </div>
-            
             <div class="file-list">
-                <h3>Archivos Disponibles:</h3>
                 {% for file in files %}
                     <div class="file-item">
-                        <span>{{ file }}</span>
-                        <div class="file-actions">
-                            <button onclick="runFile('{{ file }}')" class="btn-run">Ejecutar</button>
-                            <button onclick="deleteFile('{{ file }}')" class="btn-delete">Borrar</button>
+                        <span class="filename">{{ file }}</span>
+                        <div class="actions">
+                            <button class="btn run" data-file="{{ file }}">▶ Ejecutar</button>
+                            <button class="btn delete" data-file="{{ file }}">🗑 Borrar</button>
                         </div>
                     </div>
                 {% endfor %}
@@ -43,20 +45,16 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const historyDiv = document.getElementById('history');
-        const commandInput = document.getElementById('command');
-        const executeBtn = document.getElementById('execute');
-        
-        function appendToHistory(content) {
-            const pre = document.createElement('pre');
-            pre.className = 'history-line';
-            pre.textContent = content;
-            historyDiv.appendChild(pre);
-            historyDiv.scrollTop = historyDiv.scrollHeight;
-        }
+        const commandInput = document.getElementById('commandInput');
+        const executeBtn = document.getElementById('executeBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
 
+        // Manejo de comandos
         async function executeCommand() {
             const command = commandInput.value.trim();
             if (!command) return;
@@ -65,67 +63,108 @@
                 const response = await fetch('/execute', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({command: command, mode: 'bash'})
+                    body: JSON.stringify({command: command})
                 });
                 
                 const data = await response.json();
+                
+                if (command.toLowerCase() === 'clear') {
+                    historyDiv.innerHTML = '';
+                    return;
+                }
+                
                 if (data.error) throw new Error(data.error);
                 
-                data.history.forEach(line => appendToHistory(line));
+                updateHistory(data.history);
                 commandInput.value = '';
+                historyDiv.scrollTop = historyDiv.scrollHeight;
             } catch (error) {
-                appendToHistory(`Error: ${error.message}`);
+                showError(error.message);
             }
         }
 
-        async function uploadFile(file) {
-            const formData = new FormData();
-            formData.append('archivo', file);
+        function updateHistory(history) {
+            historyDiv.innerHTML = history.map(item => `
+                <div class="command-block">
+                    <div class="command">$ ${item.command}</div>
+                    <pre class="output">${item.output}</pre>
+                </div>
+            `).join('');
+        }
+
+        // Subida de archivos
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        
+        fileInput.addEventListener('change', async (e) => {
+            if (!e.target.files[0]) return;
             
             try {
+                const formData = new FormData();
+                formData.append('archivo', e.target.files[0]);
+                
                 const response = await fetch('/upload', {
                     method: 'POST',
                     body: formData
                 });
+                
                 const result = await response.json();
-                if (result.error) throw new Error(result.error);
-                window.location.reload();
+                
+                if (!response.ok) throw new Error(result.error);
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Éxito',
+                    text: result.success
+                }).then(() => window.location.reload());
+                
             } catch (error) {
-                appendToHistory(`Upload Error: ${error.message}`);
+                showError(error.message);
             }
-        }
-
-        document.getElementById('fileInput').addEventListener('change', (e) => {
-            if (e.target.files[0]) uploadFile(e.target.files[0]);
         });
 
+        // Manejo de archivos
+        document.querySelectorAll('.delete').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const filename = btn.dataset.file;
+                const confirm = await Swal.fire({
+                    title: '¿Borrar archivo?',
+                    text: `¿Eliminar ${filename}?`,
+                    icon: 'warning',
+                    showCancelButton: true
+                });
+                
+                if (confirm.isConfirmed) {
+                    try {
+                        const response = await fetch(`/delete/${filename}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (!response.ok) throw new Error(result.error);
+                        
+                        Swal.fire('¡Eliminado!', result.success, 'success');
+                        window.location.reload();
+                    } catch (error) {
+                        showError(error.message);
+                    }
+                }
+            });
+        });
+
+        // Eventos
         executeBtn.addEventListener('click', executeCommand);
         commandInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') executeCommand();
         });
 
-        window.runFile = async (filename) => {
-            try {
-                const response = await fetch(`/run/${filename}`);
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
-                appendToHistory(`$ python ${filename}\n${data.output}`);
-            } catch (error) {
-                appendToHistory(`Execution Error: ${error.message}`);
-            }
-        };
-
-        window.deleteFile = async (filename) => {
-            if (!confirm(`¿Borrar ${filename}?`)) return;
-            try {
-                const response = await fetch(`/delete/${filename}`);
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
-                window.location.reload();
-            } catch (error) {
-                appendToHistory(`Delete Error: ${error.message}`);
-            }
-        };
+        function showError(message) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: message
+            });
+        }
     });
     </script>
 </body>
