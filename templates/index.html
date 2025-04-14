@@ -2,24 +2,21 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Consola Avanzada</title>
+    <title>Consola Web Pro</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
         <div class="console">
-            <div class="path-bar" id="pathBar">
+            <div class="path-bar">
+                <span>Ruta: </span>
                 <span id="currentPath">{{ cwd }}</span>
             </div>
-            <div class="history" id="history">
-                {% for line in output.split('\n') %}
-                    <div class="history-line">{{ line }}</div>
-                {% endfor %}
-            </div>
+            <div class="history" id="history"></div>
             <div class="input-area">
                 <span class="prompt">$</span>
-                <input type="text" id="command" placeholder="Escribe un comando..." autocomplete="off" autofocus>
+                <input type="text" id="command" autocomplete="off" autofocus>
                 <button id="execute">Ejecutar</button>
             </div>
         </div>
@@ -30,11 +27,11 @@
                 <button class="upload-btn" onclick="document.getElementById('file-input').click()">
                     Subir Script (.py)
                 </button>
-                <input type="file" id="file-input" hidden accept=".py" onchange="uploadFile(this)">
+                <input type="file" id="file-input" hidden accept=".py">
             </div>
-            <div class="file-list">
+            <div class="file-list" id="fileList">
                 {% for file in files %}
-                    <div class="file-item">
+                    <div class="file-item" data-filename="{{ file }}">
                         <span class="filename">{{ file }}</span>
                         <div class="btn-group">
                             <button class="btn-run" onclick="runFile('{{ file }}')">Ejecutar</button>
@@ -47,70 +44,72 @@
     </div>
 
     <script>
-        document.getElementById('execute').addEventListener('click', executeCommand);
-        document.getElementById('command').addEventListener('keydown', (e) => {
+        // Manejo de comandos
+        const commandInput = document.getElementById('command');
+        const executeBtn = document.getElementById('execute');
+        
+        executeBtn.addEventListener('click', executeCommand);
+        commandInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') executeCommand();
         });
 
         async function executeCommand() {
-            const commandInput = document.getElementById('command');
             const command = commandInput.value.trim();
             if (!command) return;
             
-            commandInput.disabled = true;
-            document.getElementById('execute').classList.add('loading');
-            
+            executeBtn.disabled = true;
             try {
                 const response = await fetch('/execute', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: command })
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: command})
                 });
                 
                 const data = await response.json();
                 
-                if (!response.ok) throw new Error(data.error || 'Error en el comando');
+                if (!response.ok) throw new Error(data.error || 'Error en comando');
                 
                 document.getElementById('currentPath').textContent = data.cwd;
-                addHistoryLine(`$ ${command}`, data.output);
+                updateHistory(data.history);
                 
             } catch (error) {
                 showError(error.message);
             } finally {
                 commandInput.value = '';
-                commandInput.disabled = false;
-                document.getElementById('execute').classList.remove('loading');
+                executeBtn.disabled = false;
             }
         }
 
-        function addHistoryLine(command, output) {
+        function updateHistory(history) {
             const historyDiv = document.getElementById('history');
-            const line = document.createElement('div');
-            line.className = 'history-line enter-animation';
-            line.innerHTML = `
-                <div class="command-line">${command}</div>
-                <div class="output">${output.replace(/\n/g, '<br>')}</div>
-            `;
-            historyDiv.appendChild(line);
-            historyDiv.scrollTo({ top: historyDiv.scrollHeight, behavior: 'smooth' });
+            historyDiv.innerHTML = history.map(item => `
+                <div class="history-line">${item.replace(/\n/g, '<br>')}</div>
+            `).join('');
+            historyDiv.scrollTop = historyDiv.scrollHeight;
         }
+
+        // Manejo de archivos
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const formData = new FormData();
+            formData.append('archivo', e.target.files[0]);
+            
+            try {
+                await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                window.location.reload();
+            } catch (error) {
+                showError(error.message);
+            }
+        });
 
         async function deleteFile(filename) {
             if (!confirm(`¿Borrar ${filename}?`)) return;
             
             try {
-                const response = await fetch(`/delete/${encodeURIComponent(filename)}`, {
-                    method: 'DELETE'
-                });
-                
-                if (!response.ok) throw new Error('Error al borrar');
-                
-                document.querySelectorAll('.file-item').forEach(item => {
-                    if (item.querySelector('.filename').textContent === filename) {
-                        item.classList.add('deleting');
-                        setTimeout(() => item.remove(), 300);
-                    }
-                });
+                await fetch(`/delete/${filename}`, {method: 'DELETE'});
+                document.querySelector(`[data-filename="${filename}"]`).remove();
             } catch (error) {
                 showError(error.message);
             }
@@ -118,10 +117,9 @@
 
         function showError(message) {
             const historyDiv = document.getElementById('history');
-            const div = document.createElement('div');
-            div.className = 'history-line error';
-            div.textContent = `Error: ${message}`;
-            historyDiv.appendChild(div);
+            historyDiv.innerHTML += `
+                <div class="history-line error">Error: ${message}</div>
+            `;
             historyDiv.scrollTop = historyDiv.scrollHeight;
         }
     </script>

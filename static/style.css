@@ -15,21 +15,20 @@ body {
     height: 95vh;
 }
 
+/* Consola */
 .console {
     background: #000;
     border-radius: 8px;
     padding: 20px;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 0 15px rgba(0, 255, 157, 0.1);
 }
 
 .path-bar {
     background: #2d2d2d;
-    padding: 8px 15px;
+    padding: 10px;
     border-radius: 5px;
     margin-bottom: 15px;
-    font-size: 0.9em;
     color: #00ff9d;
 }
 
@@ -46,30 +45,18 @@ body {
     margin: 10px 0;
     padding: 8px;
     border-left: 3px solid #00ff9d;
-    transition: all 0.3s ease;
+    white-space: pre-wrap;
 }
 
-.history-line.enter-animation {
-    animation: slideIn 0.3s ease-out;
-}
-
-@keyframes slideIn {
-    from { opacity: 0; transform: translateX(20px); }
-    to { opacity: 1; transform: translateX(0); }
+.history-line.error {
+    border-color: #ff4444;
+    color: #ff4444;
 }
 
 .input-area {
     display: flex;
     gap: 10px;
     align-items: center;
-    background: #2d2d2d;
-    padding: 10px;
-    border-radius: 5px;
-}
-
-.prompt {
-    color: #00ff9d;
-    font-weight: bold;
 }
 
 #command {
@@ -78,12 +65,7 @@ body {
     border: 1px solid #00ff9d;
     color: #00ff9d;
     padding: 12px;
-    transition: all 0.3s ease;
-}
-
-#command:focus {
-    box-shadow: 0 0 10px rgba(0, 255, 157, 0.3);
-    outline: none;
+    font-family: 'Courier New', monospace;
 }
 
 #execute {
@@ -93,19 +75,19 @@ body {
     padding: 12px 20px;
     border-radius: 5px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: 0.3s;
 }
 
-#execute.loading {
-    opacity: 0.7;
-    pointer-events: none;
+#execute:disabled {
+    opacity: 0.5;
 }
 
+/* Archivos */
 .files {
     background: #000;
     border-radius: 8px;
     padding: 20px;
-    box-shadow: 0 0 15px rgba(0, 255, 157, 0.1);
+    overflow-y: auto;
 }
 
 .file-item {
@@ -115,13 +97,11 @@ body {
     border-radius: 5px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    transition: all 0.3s ease;
+    transition: 0.3s;
 }
 
 .file-item:hover {
     transform: translateX(5px);
-    box-shadow: 0 0 10px rgba(0, 255, 157, 0.1);
 }
 
 .btn-run {
@@ -130,21 +110,34 @@ body {
 }
 
 .btn-delete {
-    background: #ff006a;
+    background: #ff4444;
+}
+
+/* Error Handling */
+.error-container {
+    background: #1a1a1a;
+    color: #ff4444;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.error-content {
+    background: #252525;
+    padding: 2rem;
+    border-radius: 8px;
+    border: 1px solid #ff4444;
+    max-width: 600px;
+}
+
+.error-button {
+    background: #ff4444;
     color: white;
-}
-
-.error {
-    color: #ff006a;
-}
-
-@media (max-width: 768px) {
-    .container {
-        grid-template-columns: 1fr;
-        height: auto;
-    }
-    
-    .console, .files {
-        height: 50vh;
-    }
+    padding: 0.8rem 1.5rem;
+    border-radius: 4px;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 1rem;
 }

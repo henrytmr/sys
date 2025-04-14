@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Error</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-content">
+            <h1>Error en la aplicación</h1>
+            <div class="error-message">
+                {{ error }}
+            </div>
+            <div class="error-actions">
+                <a href="/" class="error-button">Volver al inicio</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

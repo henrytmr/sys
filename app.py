@@ -6,16 +6,40 @@ import logging
 from flask import Flask, render_template, request, jsonify, session
 from flask_session import Session
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
+
+# Configuración
+UPLOAD_FOLDER = "uploads"
+ALLOWED_EXTENSIONS = {'py'}
+MAX_HISTORY_LINES = 100
 
 app = Flask("consola_web")
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta")
-app.config["UPLOAD_FOLDER"] = "uploads"
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["SESSION_TYPE"] = "filesystem"
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB
 Session(app)
 
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Logging
+logging.basicConfig(level=logging.INFO)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 user_sessions = {}
 
+# Manejo de errores
+@app.errorhandler(HTTPException)
+def handle_http_exception(e):
+    return render_template("error.html", error=f"{e.code} - {e.name}"), e.code
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logging.error(f"Error: {str(e)}")
+    return render_template("error.html", error=f"Error interno: {str(e)}"), 500
+
+# Funciones auxiliares
+def clean_history(history):
+    return history[-MAX_HISTORY_LINES:] if len(history) > MAX_HISTORY_LINES else history
+
+# Rutas
 @app.route("/", methods=["GET"])
 def index():
     try:
@@ -27,18 +51,18 @@ def index():
                 "cwd": os.getcwd()
             }
         
-        files = os.listdir(app.config['UPLOAD_FOLDER'])
+        files = os.listdir(UPLOAD_FOLDER)
         return render_template("index.html", files=files)
     except Exception as e:
-        logging.error(f"Error inicial: {str(e)}")
-        return render_template("error.html", error="Error inicializando sesión")
+        logging.error(f"Error en index: {str(e)}")
+        return render_template("error.html", error=f"Error inicial: {str(e)}"), 500
 
 @app.route("/execute", methods=["POST"])
 def execute():
     try:
         session_id = session.get("session_id")
         if not session_id or session_id not in user_sessions:
-            return jsonify({"error": "Sesión no válida"}), 401
+            return jsonify({"error": "Sesión inválida"}), 401
             
         data = request.get_json()
         command = data.get("command", "").strip()
@@ -55,32 +79,22 @@ def execute():
         try:
             if command.startswith("cd "):
                 new_dir = command[3:].strip()
-                try:
-                    target_dir = os.path.join(user["cwd"], new_dir)
-                    os.chdir(target_dir)
-                    user["cwd"] = os.getcwd()
-                    output = f"Directorio actual: {user['cwd']}"
-                except Exception as e:
-                    output = f"Error: {str(e)}"
+                target = os.path.join(user["cwd"], new_dir)
+                os.chdir(target)
+                user["cwd"] = os.getcwd()
+                output = f"Directorio: {user['cwd']}"
             else:
                 process = subprocess.Popen(
                     shlex.split(command),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    cwd=user.get("cwd", os.getcwd())
+                    cwd=user["cwd"]
                 )
-                
-                try:
-                    stdout, stderr = process.communicate(timeout=15)
-                    output = stdout + stderr
-                    
-                    if process.returncode != 0:
-                        output += f"\n[Codigo salida: {process.returncode}]"
-                        
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    output = "Error: Tiempo de ejecucion excedido (15s)"
+                stdout, stderr = process.communicate(timeout=15)
+                output = stdout + stderr
+                if process.returncode != 0:
+                    output += f"\n[Código salida: {process.returncode}]"
         
         except Exception as e:
             output = f"Error: {str(e)}"
@@ -91,10 +105,10 @@ def execute():
             "history": user["history"],
             "cwd": user["cwd"]
         })
-    
+        
     except Exception as e:
-        logging.error(f"Error en execute: {str(e)}")
-        return jsonify({"error": "Error interno del servidor"}), 500
+        logging.error(f"Error execute: {str(e)}")
+        return jsonify({"error": "Error interno"}), 500
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
@@ -102,34 +116,16 @@ def upload_file():
         file = request.files['archivo']
         filename = secure_filename(file.filename)
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        return jsonify({'success': f'Archivo {filename} subido correctamente'})
+        return jsonify({'success': f'Archivo {filename} subido'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route("/delete/<filename>", methods=["DELETE"])
 def delete_file(filename):
     try:
-        safe_filename = secure_filename(filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
         os.remove(filepath)
-        return jsonify({'success': f'Archivo {safe_filename} eliminado'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route("/run/<filename>", methods=["POST"])
-def run_file(filename):
-    try:
-        safe_filename = secure_filename(filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
-        process = subprocess.Popen(
-            ['python3', filepath],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        stdout, stderr = process.communicate()
-        output = stdout + stderr
-        return jsonify({'output': output})
+        return jsonify({'success': f'Archivo {filename} eliminado'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
