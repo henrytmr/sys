@@ -51,44 +51,94 @@
 
         async function executeCommand() {
             const command = document.getElementById('command').value.trim();
+            const mode = document.querySelector('.mode-btn.active')?.dataset.mode || 'bash';
+            
             if (!command) return;
             
-            const response = await fetch('/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: command, mode: 'bash' })
-            });
-            
-            const data = await response.json();
+            try {
+                const response = await fetch('/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: command, mode: mode })
+                });
+                
+                const data = await response.json();
+                updateHistory(data.history);
+                document.getElementById('command').value = '';
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function updateHistory(history) {
             const historyDiv = document.getElementById('history');
-            data.history.forEach(line => {
-                const pre = document.createElement('pre');
-                pre.className = 'history-line';
-                pre.textContent = line;
-                historyDiv.appendChild(pre);
-            });
-            document.getElementById('command').value = '';
+            historyDiv.innerHTML = history.map(item => {
+                return `<div class="history-line">${item.replace(/\n/g, '<br>')}</div>`;
+            }).join('');
             historyDiv.scrollTop = historyDiv.scrollHeight;
         }
 
         async function runFile(filename) {
-            const response = await fetch(`/run/${filename}`);
-            const result = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(result, 'text/html');
-            document.getElementById('history').innerHTML = doc.querySelector('#history').innerHTML;
+            try {
+                const response = await fetch(`/run/${filename}`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    const historyDiv = document.getElementById('history');
+                    const newEntry = `$ python ${filename}\n${result.output}`;
+                    const div = document.createElement('div');
+                    div.className = 'history-line';
+                    div.innerHTML = newEntry.replace(/\n/g, '<br>');
+                    historyDiv.appendChild(div);
+                    historyDiv.scrollTop = historyDiv.scrollHeight;
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Error de conexión: ${error.message}`);
+            }
         }
 
         async function deleteFile(filename) {
-            await fetch(`/delete/${filename}`);
-            window.location.reload();
+            if (!confirm(`¿Estás seguro de querer borrar ${filename}?`)) return;
+            
+            try {
+                const response = await fetch(`/delete/${filename}`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(result.success);
+                    window.location.reload();
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Error de conexión: ${error.message}`);
+            }
         }
 
         async function uploadFile(input) {
+            if (!input.files[0]) return;
+            
             const formData = new FormData();
             formData.append('archivo', input.files[0]);
-            await fetch('/upload', { method: 'POST', body: formData });
-            window.location.reload();
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    alert(result.success);
+                    window.location.reload();
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Error de conexión: ${error.message}`);
+            }
         }
     </script>
 </body>
