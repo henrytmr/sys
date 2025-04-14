@@ -53,7 +53,7 @@
         const executeBtn = document.getElementById('executeBtn');
         const fileInput = document.getElementById('fileInput');
 
-        // Animaci髇 de entrada para nuevos comandos
+        // Animaci贸n de entrada para nuevos comandos
         const observer = new MutationObserver(() => {
             historyDiv.scrollTop = historyDiv.scrollHeight;
         });
@@ -88,7 +88,7 @@
             }
         };
 
-        // Funci髇 de actualizaci髇 de historial
+        // Funci贸n de actualizaci贸n de historial
         const updateHistory = (history) => {
             historyDiv.innerHTML = history.map(item => `
                 <div class="command-block">
@@ -104,7 +104,7 @@
                 const filename = btn.dataset.file;
                 const { isConfirmed } = await Swal.fire({
                     title: 'Confirmar borrado',
-                    html: `<p>緽orrar permanentemente <strong>${filename}</strong>?</p>`,
+                    html: `<p>驴Borrar permanentemente <strong>${filename}</strong>?</p>`,
                     icon: 'warning',
                     showCancelButton: true,
                     confirmButtonColor: var(--danger),
@@ -129,7 +129,7 @@
                         
                         Swal.fire({
                             icon: 'success',
-                            title: 'liminado!',
+                            title: '隆Eliminado!',
                             text: result.success,
                             background: var(--bg),
                             customClass: {
@@ -168,7 +168,7 @@
                 
                 await Swal.fire({
                     icon: 'success',
-                    title: 'ubido!',
+                    title: '隆Subido!',
                     text: result.success,
                     background: var(--bg),
                     customClass: {
@@ -181,11 +181,11 @@
             }
         });
 
-        // Funci髇 de manejo de errores
+        // Funci贸n de manejo de errores
         const showError = (message) => {
             Swal.fire({
                 icon: 'error',
-                title: 'rror!',
+                title: '隆Error!',
                 text: message,
                 background: var(--bg),
                 customClass: {

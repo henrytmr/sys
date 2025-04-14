@@ -7,6 +7,7 @@ from flask import Flask, render_template, request, jsonify, session
 from flask_session import Session
 from werkzeug.utils import secure_filename
 
+# Configuración
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {'py'}
 
@@ -14,9 +15,9 @@ app = Flask("consola_web")
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["SESSION_TYPE"] = "filesystem"
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB
 Session(app)
 
+# Logging
 logging.basicConfig(
     filename='app.log',
     level=logging.ERROR,
@@ -55,7 +56,6 @@ def execute():
         
         user = user_sessions[session["session_id"]]
         
-        # Manejar comandos especiales
         if command.lower() == "clear":
             user["history"] = []
             return jsonify({"output": "", "history": []})
@@ -74,13 +74,10 @@ def execute():
                     shlex.split(command),
                     capture_output=True,
                     text=True,
-                    timeout=10,
                     cwd=user.get("cwd", os.getcwd())
                 )
                 output = result.stdout + result.stderr
                 
-        except subprocess.TimeoutExpired:
-            output = "Error: Tiempo de ejecución excedido"
         except Exception as e:
             output = f"Error: {str(e)}"
         
@@ -111,10 +108,35 @@ def upload_file():
             return jsonify({'error': 'El archivo ya existe'}), 409
             
         file.save(filepath)
-        return jsonify({'success': f'{filename} subido'})
+        return jsonify({'success': f'{filename} subido correctamente'})
         
     except Exception as e:
         logging.error(f"Upload error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route("/run/<filename>")
+def run_file(filename):
+    try:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'Archivo no encontrado'}), 404
+            
+        result = subprocess.run(
+            ['python3', filepath],
+            capture_output=True,
+            text=True
+        )
+        output = result.stdout + result.stderr
+        
+        if "session_id" in session:
+            user = user_sessions.get(session["session_id"])
+            if user:
+                user["history"].append({"command": f"python {filename}", "output": output})
+        
+        return jsonify({'output': output})
+        
+    except Exception as e:
+        logging.error(f"Run error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route("/delete/<filename>", methods=["DELETE"])
@@ -123,12 +145,12 @@ def delete_file(filename):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
         if os.path.exists(filepath):
             os.remove(filepath)
-            return jsonify({'success': f'{filename} eliminado'})
+            return jsonify({'success': f'{filename} eliminado correctamente'})
         return jsonify({'error': 'Archivo no encontrado'}), 404
         
     except Exception as e:
         logging.error(f"Delete error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+# Iniciar servidor
+app.run(host='0.0.0.0', port=5000)
