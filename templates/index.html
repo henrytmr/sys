@@ -11,7 +11,7 @@
         <div class="console">
             <div class="history" id="history">
                 {% for line in output.split('\n') %}
-                    <p>{{ line }}</p>
+                    <div class="history-line">{{ line }}</div>
                 {% endfor %}
             </div>
             <div class="input-area">
@@ -19,43 +19,77 @@
                 <button id="execute">Ejecutar</button>
             </div>
         </div>
+        
         <div class="files">
             <h3>Archivos subidos:</h3>
-            <ul>
+            <div class="file-actions">
+                <button class="upload-btn" onclick="document.getElementById('file-input').click()">
+                    Subir Script (.py)
+                </button>
+                <input type="file" id="file-input" hidden accept=".py" onchange="uploadFile(this)">
+            </div>
+            <div class="file-list">
                 {% for file in files %}
-                    <li>
-                        {{ file }}
-                        <a href="/run/{{ file }}">Ejecutar</a> |
-                        <a href="/start/{{ file }}">Segundo Plano</a> |
-                        <a href="/delete/{{ file }}">Borrar</a>
-                    </li>
+                    <div class="file-item">
+                        <span class="filename">{{ file }}</span>
+                        <div class="btn-group">
+                            <button class="btn-run" onclick="runFile('{{ file }}')">Ejecutar</button>
+                            <button class="btn-delete" onclick="deleteFile('{{ file }}')">Borrar</button>
+                        </div>
+                    </div>
                 {% endfor %}
-            </ul>
+            </div>
         </div>
     </div>
+
     <script>
-        document.getElementById('execute').addEventListener('click', function() {
-            let command = document.getElementById('command').value;
-            let mode = 'bash'; // Cambia a 'python' según se requiera
-            if (command.trim() !== '') {
-                fetch('/execute', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: command, mode: mode })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('history').innerHTML = data.history.join('<br>');
-                    document.getElementById('command').value = '';
-                });
-            }
+        // Manejo de comandos
+        document.getElementById('execute').addEventListener('click', executeCommand);
+        document.getElementById('command').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') executeCommand();
         });
-        document.getElementById('command').addEventListener('keydown', function(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                document.getElementById('execute').click();
-            }
-        });
+
+        async function executeCommand() {
+            const command = document.getElementById('command').value.trim();
+            if (!command) return;
+            
+            const response = await fetch('/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: command, mode: 'bash' })
+            });
+            
+            const data = await response.json();
+            const historyDiv = document.getElementById('history');
+            data.history.forEach(line => {
+                const pre = document.createElement('pre');
+                pre.className = 'history-line';
+                pre.textContent = line;
+                historyDiv.appendChild(pre);
+            });
+            document.getElementById('command').value = '';
+            historyDiv.scrollTop = historyDiv.scrollHeight;
+        }
+
+        async function runFile(filename) {
+            const response = await fetch(`/run/${filename}`);
+            const result = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(result, 'text/html');
+            document.getElementById('history').innerHTML = doc.querySelector('#history').innerHTML;
+        }
+
+        async function deleteFile(filename) {
+            await fetch(`/delete/${filename}`);
+            window.location.reload();
+        }
+
+        async function uploadFile(input) {
+            const formData = new FormData();
+            formData.append('archivo', input.files[0]);
+            await fetch('/upload', { method: 'POST', body: formData });
+            window.location.reload();
+        }
     </script>
 </body>
 </html>
