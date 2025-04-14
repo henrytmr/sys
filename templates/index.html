@@ -51,22 +51,30 @@
 
         async function executeCommand() {
             const command = document.getElementById('command').value.trim();
-            const mode = document.querySelector('.mode-btn.active')?.dataset.mode || 'bash';
-            
             if (!command) return;
             
             try {
                 const response = await fetch('/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: command, mode: mode })
+                    body: JSON.stringify({ command: command, mode: 'bash' })
                 });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error en la solicitud');
+                }
                 
                 const data = await response.json();
                 updateHistory(data.history);
                 document.getElementById('command').value = '';
             } catch (error) {
-                console.error('Error:', error);
+                const historyDiv = document.getElementById('history');
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'history-line error';
+                errorDiv.textContent = `Error: ${error.message}`;
+                historyDiv.appendChild(errorDiv);
+                historyDiv.scrollTop = historyDiv.scrollHeight;
             }
         }
 
@@ -81,39 +89,39 @@
         async function runFile(filename) {
             try {
                 const response = await fetch(`/run/${filename}`);
-                const result = await response.json();
-                
-                if (response.ok) {
-                    const historyDiv = document.getElementById('history');
-                    const newEntry = `$ python ${filename}\n${result.output}`;
-                    const div = document.createElement('div');
-                    div.className = 'history-line';
-                    div.innerHTML = newEntry.replace(/\n/g, '<br>');
-                    historyDiv.appendChild(div);
-                    historyDiv.scrollTop = historyDiv.scrollHeight;
-                } else {
-                    alert(`Error: ${result.error}`);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error al ejecutar');
                 }
+                
+                const result = await response.json();
+                const historyDiv = document.getElementById('history');
+                const newEntry = `$ python ${filename}\n${result.output}`;
+                const div = document.createElement('div');
+                div.className = 'history-line';
+                div.innerHTML = newEntry.replace(/\n/g, '<br>');
+                historyDiv.appendChild(div);
+                historyDiv.scrollTop = historyDiv.scrollHeight;
             } catch (error) {
-                alert(`Error de conexión: ${error.message}`);
+                alert(`Error: ${error.message}`);
             }
         }
 
         async function deleteFile(filename) {
-            if (!confirm(`¿Estás seguro de querer borrar ${filename}?`)) return;
+            if (!confirm(`¿Borrar ${filename}?`)) return;
             
             try {
                 const response = await fetch(`/delete/${filename}`);
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(result.success);
-                    window.location.reload();
-                } else {
-                    alert(`Error: ${result.error}`);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error al borrar');
                 }
+                
+                const result = await response.json();
+                alert(result.success);
+                window.location.reload();
             } catch (error) {
-                alert(`Error de conexión: ${error.message}`);
+                alert(`Error: ${error.message}`);
             }
         }
 
@@ -129,15 +137,16 @@
                     body: formData
                 });
                 
-                const result = await response.json();
-                if (response.ok) {
-                    alert(result.success);
-                    window.location.reload();
-                } else {
-                    alert(`Error: ${result.error}`);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error al subir');
                 }
+                
+                const result = await response.json();
+                alert(result.success);
+                window.location.reload();
             } catch (error) {
-                alert(`Error de conexión: ${error.message}`);
+                alert(`Error: ${error.message}`);
             }
         }
     </script>
