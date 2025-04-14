@@ -9,30 +9,36 @@
 <body>
     <div class="container">
         <div class="console">
+            <div class="path-bar" id="pathBar">
+                <span id="currentPath">{{ cwd }}</span>
+            </div>
             <div class="history" id="history">
-                <!-- Historial se actualiza dinámicamente -->
+                {% for line in output.split('\n') %}
+                    <div class="history-line">{{ line }}</div>
+                {% endfor %}
             </div>
             <div class="input-area">
-                <input type="text" id="command" placeholder="Ingrese comando..." autocomplete="off" autofocus>
+                <span class="prompt">$</span>
+                <input type="text" id="command" placeholder="Escribe un comando..." autocomplete="off" autofocus>
                 <button id="execute">Ejecutar</button>
             </div>
         </div>
         
-        <div class="file-manager">
-            <h3>Administrador de Archivos</h3>
+        <div class="files">
+            <h3>Archivos subidos:</h3>
             <div class="file-actions">
                 <button class="upload-btn" onclick="document.getElementById('file-input').click()">
                     Subir Script (.py)
                 </button>
-                <input type="file" id="file-input" hidden accept=".py">
+                <input type="file" id="file-input" hidden accept=".py" onchange="uploadFile(this)">
             </div>
-            <div class="file-list" id="fileList">
+            <div class="file-list">
                 {% for file in files %}
-                    <div class="file-item" data-filename="{{ file }}">
+                    <div class="file-item">
                         <span class="filename">{{ file }}</span>
                         <div class="btn-group">
                             <button class="btn-run" onclick="runFile('{{ file }}')">Ejecutar</button>
-                            <button class="btn-delete" onclick="deleteFile('{{ file }}')">Eliminar</button>
+                            <button class="btn-delete" onclick="deleteFile('{{ file }}')">Borrar</button>
                         </div>
                     </div>
                 {% endfor %}
@@ -41,9 +47,8 @@
     </div>
 
     <script>
-        // Manejo de comandos
         document.getElementById('execute').addEventListener('click', executeCommand);
-        document.getElementById('command').addEventListener('keypress', (e) => {
+        document.getElementById('command').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') executeCommand();
         });
 
@@ -51,101 +56,72 @@
             const commandInput = document.getElementById('command');
             const command = commandInput.value.trim();
             if (!command) return;
-
+            
+            commandInput.disabled = true;
+            document.getElementById('execute').classList.add('loading');
+            
             try {
                 const response = await fetch('/execute', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({command: command})
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: command })
                 });
                 
                 const data = await response.json();
-                updateHistory(data);
-                commandInput.value = '';
+                
+                if (!response.ok) throw new Error(data.error || 'Error en el comando');
+                
+                document.getElementById('currentPath').textContent = data.cwd;
+                addHistoryLine(`$ ${command}`, data.output);
+                
             } catch (error) {
-                showError(`Error: ${error.message}`);
+                showError(error.message);
+            } finally {
+                commandInput.value = '';
+                commandInput.disabled = false;
+                document.getElementById('execute').classList.remove('loading');
             }
         }
 
-        // Manejo de archivos
-        document.getElementById('file-input').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            const formData = new FormData();
-            formData.append('archivo', file);
-
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showSuccess(result.success);
-                    window.location.reload();
-                } else {
-                    throw new Error(result.error);
-                }
-            } catch (error) {
-                showError(error.message);
-            }
-        });
+        function addHistoryLine(command, output) {
+            const historyDiv = document.getElementById('history');
+            const line = document.createElement('div');
+            line.className = 'history-line enter-animation';
+            line.innerHTML = `
+                <div class="command-line">${command}</div>
+                <div class="output">${output.replace(/\n/g, '<br>')}</div>
+            `;
+            historyDiv.appendChild(line);
+            historyDiv.scrollTo({ top: historyDiv.scrollHeight, behavior: 'smooth' });
+        }
 
         async function deleteFile(filename) {
-            if (!confirm(`¿Eliminar ${filename}?`)) return;
+            if (!confirm(`¿Borrar ${filename}?`)) return;
             
             try {
-                const response = await fetch(`/delete/${filename}`, {
+                const response = await fetch(`/delete/${encodeURIComponent(filename)}`, {
                     method: 'DELETE'
                 });
-                const result = await response.json();
                 
-                if (response.ok) {
-                    document.querySelector(`.file-item[data-filename="${filename}"]`).remove();
-                    showSuccess(result.success);
-                } else {
-                    throw new Error(result.error);
-                }
-            } catch (error) {
-                showError(error.message);
-            }
-        }
-
-        async function runFile(filename) {
-            try {
-                const response = await fetch(`/run/${filename}`, {
-                    method: 'POST'
+                if (!response.ok) throw new Error('Error al borrar');
+                
+                document.querySelectorAll('.file-item').forEach(item => {
+                    if (item.querySelector('.filename').textContent === filename) {
+                        item.classList.add('deleting');
+                        setTimeout(() => item.remove(), 300);
+                    }
                 });
-                const result = await response.json();
-                
-                if (response.ok) {
-                    updateHistory({output: `Ejecutando ${filename}:\n${result.output}`});
-                } else {
-                    throw new Error(result.error);
-                }
             } catch (error) {
                 showError(error.message);
             }
-        }
-
-        // Funciones auxiliares
-        function updateHistory(data) {
-            const historyDiv = document.getElementById('history');
-            historyDiv.innerHTML += `
-                <div class="command-line">$ ${data.command || '...'}</div>
-                <div class="output">${data.output.replace(/\n/g, '<br>')}</div>
-            `;
-            historyDiv.scrollTop = historyDiv.scrollHeight;
-        }
-
-        function showSuccess(message) {
-            const historyDiv = document.getElementById('history');
-            historyDiv.innerHTML += `<div class="success-message">✓ ${message}</div>`;
-            historyDiv.scrollTop = historyDiv.scrollHeight;
         }
 
         function showError(message) {
             const historyDiv = document.getElementById('history');
-            historyDiv.innerHTML += `<div class="error-message">✗ ${message}</div>`;
+            const div = document.createElement('div');
+            div.className = 'history-line error';
+            div.textContent = `Error: ${message}`;
+            historyDiv.appendChild(div);
             historyDiv.scrollTop = historyDiv.scrollHeight;
         }
     </script>

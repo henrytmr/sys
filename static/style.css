@@ -1,134 +1,141 @@
 body {
-    background: #0d0d0d;
-    color: #00ff00;
     font-family: 'Courier New', monospace;
+    background: #1a1a1a;
+    color: #00ff9d;
     margin: 0;
     padding: 20px;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .container {
     display: grid;
     grid-template-columns: 2fr 1fr;
     gap: 20px;
-    max-width: 1200px;
-    margin: 0 auto;
+    height: 95vh;
 }
 
 .console {
     background: #000;
-    border: 2px solid #00ff00;
-    border-radius: 5px;
+    border-radius: 8px;
     padding: 20px;
-    height: 80vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 15px rgba(0, 255, 157, 0.1);
+}
+
+.path-bar {
+    background: #2d2d2d;
+    padding: 8px 15px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    font-size: 0.9em;
+    color: #00ff9d;
 }
 
 .history {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    background: #000;
+    border-radius: 5px;
     margin-bottom: 15px;
+}
+
+.history-line {
+    margin: 10px 0;
+    padding: 8px;
+    border-left: 3px solid #00ff9d;
+    transition: all 0.3s ease;
+}
+
+.history-line.enter-animation {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 .input-area {
     display: flex;
     gap: 10px;
-    position: sticky;
-    bottom: 0;
-    background: #000;
-    padding: 10px 0;
+    align-items: center;
+    background: #2d2d2d;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.prompt {
+    color: #00ff9d;
+    font-weight: bold;
 }
 
 #command {
     flex: 1;
     background: #000;
-    border: 1px solid #00ff00;
-    color: #00ff00;
+    border: 1px solid #00ff9d;
+    color: #00ff9d;
     padding: 12px;
-    font-size: 14px;
+    transition: all 0.3s ease;
 }
 
-button {
-    background: #00ff00;
-    color: #000;
+#command:focus {
+    box-shadow: 0 0 10px rgba(0, 255, 157, 0.3);
+    outline: none;
+}
+
+#execute {
+    background: #00ff9d;
+    color: #1a1a1a;
     border: none;
-    padding: 12px 24px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: opacity 0.3s;
-}
-
-button:hover {
-    opacity: 0.8;
-}
-
-.file-manager {
-    background: #000;
-    border: 2px solid #00ff00;
+    padding: 12px 20px;
     border-radius: 5px;
-    padding: 20px;
-    height: 80vh;
-    overflow-y: auto;
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
-.file-list {
-    margin-top: 15px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+#execute.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.files {
+    background: #000;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 0 15px rgba(0, 255, 157, 0.1);
 }
 
 .file-item {
+    background: #2d2d2d;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 5px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #1a1a1a;
-    padding: 12px;
-    border-radius: 4px;
+    transition: all 0.3s ease;
 }
 
-.filename {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 200px;
-}
-
-.btn-group {
-    display: flex;
-    gap: 8px;
+.file-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 0 10px rgba(0, 255, 157, 0.1);
 }
 
 .btn-run {
-    background: #28a745;
+    background: #00ff9d;
+    color: #1a1a1a;
 }
 
 .btn-delete {
-    background: #dc3545;
+    background: #ff006a;
+    color: white;
 }
 
-.command-line {
-    color: #00ff00;
-    margin-bottom: 5px;
-    font-weight: bold;
-}
-
-.output {
-    color: #ffffff;
-    margin-bottom: 15px;
-    white-space: pre-wrap;
-}
-
-.success-message {
-    color: #28a745;
-    padding: 10px;
-    border-left: 3px solid #28a745;
-    margin: 10px 0;
-}
-
-.error-message {
-    color: #dc3545;
-    padding: 10px;
-    border-left: 3px solid #dc3545;
-    margin: 10px 0;
+.error {
+    color: #ff006a;
 }
 
 @media (max-width: 768px) {
@@ -137,7 +144,7 @@ button:hover {
         height: auto;
     }
     
-    .console, .file-manager {
+    .console, .files {
         height: 50vh;
     }
 }

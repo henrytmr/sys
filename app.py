@@ -45,33 +45,53 @@ def execute():
         user = user_sessions[session_id]
 
         if not command:
-            return jsonify({"output": "", "history": user["history"]})
+            return jsonify({"output": "", "history": user["history"], "cwd": user["cwd"]})
         
         if command == "clear":
             user["history"] = []
-            return jsonify({"output": "", "history": user["history"]})
+            return jsonify({"output": "", "history": user["history"], "cwd": user["cwd"]})
         
+        output = ""
         try:
-            process = subprocess.Popen(
-                shlex.split(command),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=user.get("cwd", os.getcwd())
-            )
-            
-            stdout, stderr = process.communicate()
-            output = stdout + stderr
-            
-            if process.returncode != 0:
-                output += f"\n[Código de salida: {process.returncode}]"
-            
+            if command.startswith("cd "):
+                new_dir = command[3:].strip()
+                try:
+                    target_dir = os.path.join(user["cwd"], new_dir)
+                    os.chdir(target_dir)
+                    user["cwd"] = os.getcwd()
+                    output = f"Directorio actual: {user['cwd']}"
+                except Exception as e:
+                    output = f"Error: {str(e)}"
+            else:
+                process = subprocess.Popen(
+                    shlex.split(command),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    cwd=user.get("cwd", os.getcwd())
+                )
+                
+                try:
+                    stdout, stderr = process.communicate(timeout=15)
+                    output = stdout + stderr
+                    
+                    if process.returncode != 0:
+                        output += f"\n[Codigo salida: {process.returncode}]"
+                        
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    output = "Error: Tiempo de ejecucion excedido (15s)"
+        
         except Exception as e:
             output = f"Error: {str(e)}"
         
         user["history"].append(f"$ {command}\n{output}")
-        return jsonify({"output": output, "history": user["history"]})
-        
+        return jsonify({
+            "output": output, 
+            "history": user["history"],
+            "cwd": user["cwd"]
+        })
+    
     except Exception as e:
         logging.error(f"Error en execute: {str(e)}")
         return jsonify({"error": "Error interno del servidor"}), 500
