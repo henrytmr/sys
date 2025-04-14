@@ -4,6 +4,37 @@
     <meta charset="UTF-8">
     <title>Error</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .error-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: var(--background);
+        }
+        .error-content {
+            background: var(--terminal-bg);
+            padding: 2rem;
+            border-radius: 5px;
+            max-width: 600px;
+            text-align: center;
+        }
+        .error-message {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: rgba(220, 53, 69, 0.1);
+            border-left: 3px solid var(--error);
+            color: var(--text-secondary);
+        }
+        .error-button {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: var(--accent);
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+        }
+    </style>
 </head>
 <body>
     <div class="error-container">

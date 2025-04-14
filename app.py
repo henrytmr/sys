@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.exceptions import HTTPException
 
 # Configuración
-UPLOAD_FOLDER = "uploads"
+UPLOAD_FOLDER = os.path.abspath("uploads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
 
@@ -24,6 +24,10 @@ Session(app)
 logging.basicConfig(level=logging.INFO)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 user_sessions = {}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Manejo de errores
 @app.errorhandler(HTTPException)
@@ -100,6 +104,7 @@ def execute():
             output = f"Error: {str(e)}"
         
         user["history"].append(f"$ {command}\n{output}")
+        user["history"] = clean_history(user["history"])
         return jsonify({
             "output": output, 
             "history": user["history"],
@@ -113,20 +118,35 @@ def execute():
 @app.route("/upload", methods=["POST"])
 def upload_file():
     try:
+        if 'archivo' not in request.files:
+            return jsonify({'error': 'No se encontró el archivo'}), 400
+            
         file = request.files['archivo']
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        return jsonify({'success': f'Archivo {filename} subido'})
+        if file.filename == '':
+            return jsonify({'error': 'No se seleccionó archivo'}), 400
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            return jsonify({'success': f'Archivo {filename} subido correctamente'})
+        
+        return jsonify({'error': 'Solo se permiten archivos .py'}), 400
+        
     except Exception as e:
+        logging.error(f"Error en upload: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route("/delete/<filename>", methods=["DELETE"])
 def delete_file(filename):
     try:
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'Archivo no encontrado'}), 404
+            
         os.remove(filepath)
         return jsonify({'success': f'Archivo {filename} eliminado'})
     except Exception as e:
+        logging.error(f"Error en delete: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":

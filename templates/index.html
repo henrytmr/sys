@@ -94,10 +94,16 @@
             formData.append('archivo', e.target.files[0]);
             
             try {
-                await fetch('/upload', {
+                const response = await fetch('/upload', {
                     method: 'POST',
                     body: formData
                 });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Error al subir archivo');
+                }
+                
                 window.location.reload();
             } catch (error) {
                 showError(error.message);
@@ -108,8 +114,34 @@
             if (!confirm(`¿Borrar ${filename}?`)) return;
             
             try {
-                await fetch(`/delete/${filename}`, {method: 'DELETE'});
+                const response = await fetch(`/delete/${filename}`, {method: 'DELETE'});
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Error al borrar archivo');
+                }
+                
                 document.querySelector(`[data-filename="${filename}"]`).remove();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        async function runFile(filename) {
+            try {
+                const response = await fetch('/execute', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: `python ${filename}`})
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) throw new Error(data.error || 'Error al ejecutar archivo');
+                
+                document.getElementById('currentPath').textContent = data.cwd;
+                updateHistory(data.history);
+                
             } catch (error) {
                 showError(error.message);
             }
