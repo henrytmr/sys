@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Consola Web</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="console">
+            <div class="history" id="history">
+                {% for line in output.split('\n') %}
+                    <p>{{ line }}</p>
+                {% endfor %}
+            </div>
+            <div class="input-area">
+                <input type="text" id="command" placeholder="Escribe un comando..." autocomplete="off" autofocus>
+                <button id="execute">Ejecutar</button>
+            </div>
+        </div>
+        <div class="files">
+            <h3>Archivos subidos:</h3>
+            <ul>
+                {% for file in files %}
+                    <li>
+                        {{ file }}
+                        <a href="/run/{{ file }}">Ejecutar</a> |
+                        <a href="/start/{{ file }}">Segundo Plano</a> |
+                        <a href="/delete/{{ file }}">Borrar</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    <script>
+        document.getElementById('execute').addEventListener('click', function() {
+            let command = document.getElementById('command').value;
+            let mode = 'bash'; // Cambia a 'python' según se requiera
+            if (command.trim() !== '') {
+                fetch('/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: command, mode: mode })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('history').innerHTML = data.history.join('<br>');
+                    document.getElementById('command').value = '';
+                });
+            }
+        });
+        document.getElementById('command').addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('execute').click();
+            }
+        });
+    </script>
+</body>
+</html>
