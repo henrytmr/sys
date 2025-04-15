@@ -11,15 +11,15 @@ from werkzeug.exceptions import HTTPException
 import telebot
 from telebot.types import InputFile
 
-# Configuraci√≥n general
+# Configuraci®Æn
 UPLOAD_FOLDER = os.path.abspath("uploads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
-TELEGRAM_TOKEN = "6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU"
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU')
 
 # Inicializar Flask
-app = Flask("consola_web")
-app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta")
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta_default")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["SESSION_TYPE"] = "filesystem"
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB
@@ -41,6 +41,12 @@ def clean_history(history):
     return history[-MAX_HISTORY_LINES:] if len(history) > MAX_HISTORY_LINES else history
 
 def execute_command(session_id, command):
+    if session_id not in user_sessions:
+        user_sessions[session_id] = {
+            "history": [],
+            "cwd": os.getcwd()
+        }
+    
     user = user_sessions[session_id]
     output = ""
     
@@ -62,7 +68,7 @@ def execute_command(session_id, command):
             stdout, stderr = process.communicate(timeout=15)
             output = stdout + stderr
             if process.returncode != 0:
-                output += f"\n[C√≥digo salida: {process.returncode}]"
+                output += f"\n[C®Ædigo salida: {process.returncode}]"
                 
     except Exception as e:
         output = f"Error: {str(e)}"
@@ -75,17 +81,17 @@ def execute_command(session_id, command):
 @bot.message_handler(commands=['start', 'ayuda'])
 def send_help(message):
     help_text = """
-üñ•Ô∏è *Consola Web Bot* üñ•Ô∏è
+î9Û5Ñ1Ç5 *Consola Web Bot* î9Û5Ñ1Ç5
 
 Comandos disponibles:
 /start - Iniciar el bot
 /ayuda - Mostrar esta ayuda
 /ejecutar <comando> - Ejecutar comando en la terminal
 /archivos - Listar archivos subidos
-/subir - Subir archivo .py (env√≠a el archivo como documento)
+/subir - Subir archivo .py (env®™a el archivo como documento)
 /eliminar <nombre> - Eliminar archivo
 /cd <directorio> - Cambiar directorio
-/historial - Mostrar √∫ltimos comandos
+/historial - Mostrar ®≤ltimos comandos
 """
     bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
 
@@ -94,24 +100,15 @@ def handle_execute(message):
     try:
         command = message.text.split(' ', 1)[1]
         session_id = str(message.chat.id)
-        
-        if session_id not in telegram_sessions:
-            telegram_sessions[session_id] = {
-                "history": [],
-                "cwd": os.getcwd()
-            }
-            user_sessions[session_id] = telegram_sessions[session_id]
-            
         output = execute_command(session_id, command)
         bot.send_message(message.chat.id, f"```\n{output}\n```", parse_mode='Markdown')
-        
     except IndexError:
         bot.send_message(message.chat.id, "Uso: /ejecutar <comando>")
 
 @bot.message_handler(commands=['archivos'])
 def list_files(message):
     files = os.listdir(UPLOAD_FOLDER)
-    response = "üìÅ *Archivos subidos:*\n" + "\n".join(files) if files else "No hay archivos subidos"
+    response = "î9‹7 *Archivos subidos:*\n" + "\n".join(files) if files else "No hay archivos subidos"
     bot.send_message(message.chat.id, response, parse_mode='Markdown')
 
 @bot.message_handler(content_types=['document'])
@@ -128,85 +125,87 @@ def handle_file(message):
         with open(filepath, 'wb') as new_file:
             new_file.write(downloaded_file)
             
-        bot.reply_to(message, f"‚úÖ Archivo *{filename}* subido correctamente", parse_mode='Markdown')
-        
+        bot.reply_to(message, f"Å7º3 Archivo *{filename}* subido correctamente", parse_mode='Markdown')
     except Exception as e:
-        bot.reply_to(message, f"‚ùå Error: {str(e)}")
+        bot.reply_to(message, f"Å7√4 Error: {str(e)}")
 
-@bot.message_handler(commands=['eliminar'])
-def handle_delete(message):
+# Rutas de Flask
+@app.route("/", methods=["GET"])
+def index():
     try:
-        filename = message.text.split(' ', 1)[1]
-        filepath = os.path.join(UPLOAD_FOLDER, secure_filename(filename))
-        
-        if not os.path.exists(filepath):
-            raise FileNotFoundError("Archivo no encontrado")
-            
-        os.remove(filepath)
-        bot.send_message(message.chat.id, f"üóëÔ∏è Archivo *{filename}* eliminado", parse_mode='Markdown')
-        
-    except Exception as e:
-        bot.send_message(message.chat.id, f"‚ùå Error: {str(e)}")
-
-@bot.message_handler(commands=['cd'])
-def handle_cd(message):
-    try:
-        directory = message.text.split(' ', 1)[1]
-        session_id = str(message.chat.id)
-        
-        if session_id not in telegram_sessions:
-            telegram_sessions[session_id] = {
+        if "session_id" not in session:
+            session_id = str(uuid.uuid4())
+            session["session_id"] = session_id
+            user_sessions[session_id] = {
                 "history": [],
                 "cwd": os.getcwd()
             }
-            
-        user = telegram_sessions[session_id]
-        new_dir = os.path.join(user["cwd"], directory)
-        os.chdir(new_dir)
-        user["cwd"] = os.getcwd()
-        bot.send_message(message.chat.id, f"üìÇ Directorio actual: `{user['cwd']}`", parse_mode='Markdown')
         
+        files = os.listdir(UPLOAD_FOLDER)
+        return render_template("index.html", files=files)
     except Exception as e:
-        bot.send_message(message.chat.id, f"‚ùå Error: {str(e)}")
-
-@bot.message_handler(commands=['historial'])
-def show_history(message):
-    session_id = str(message.chat.id)
-    if session_id in telegram_sessions:
-        history = "\n".join(telegram_sessions[session_id]["history"][-5:])
-        bot.send_message(message.chat.id, f"üìú *√öltimos comandos:*\n```\n{history}\n```", parse_mode='Markdown')
-    else:
-        bot.send_message(message.chat.id, "No hay historial disponible")
-
-# Rutas de Flask (mantenidas desde la versi√≥n original)
-@app.errorhandler(HTTPException)
-def handle_http_exception(e):
-    return render_template("error.html", error=f"{e.code} - {e.name}"), e.code
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    logging.error(f"Error: {str(e)}")
-    return render_template("error.html", error=f"Error interno: {str(e)}"), 500
-
-@app.route("/", methods=["GET"])
-def index():
-    # ... (mantener c√≥digo original de Flask)
+        logging.error(f"Error en index: {str(e)}")
+        return render_template("error.html", error=f"Error inicial: {str(e)}"), 500
 
 @app.route("/execute", methods=["POST"])
 def execute():
-    # ... (mantener c√≥digo original de Flask)
+    try:
+        session_id = session.get("session_id")
+        if not session_id or session_id not in user_sessions:
+            return jsonify({"error": "Sesi®Æn inv®¢lida"}), 401
+            
+        data = request.get_json()
+        command = data.get("command", "").strip()
+        if not command:
+            return jsonify({"output": "", "history": user_sessions[session_id]["history"], "cwd": user_sessions[session_id]["cwd"]})
+        
+        output = execute_command(session_id, command)
+        return jsonify({
+            "output": output, 
+            "history": user_sessions[session_id]["history"],
+            "cwd": user_sessions[session_id]["cwd"]
+        })
+    except Exception as e:
+        logging.error(f"Error execute: {str(e)}")
+        return jsonify({"error": "Error interno"}), 500
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    # ... (mantener c√≥digo original de Flask)
+    try:
+        if 'archivo' not in request.files:
+            return jsonify({'error': 'No se encontr®Æ el archivo'}), 400
+            
+        file = request.files['archivo']
+        if file.filename == '':
+            return jsonify({'error': 'No se seleccion®Æ archivo'}), 400
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            return jsonify({'success': f'Archivo {filename} subido correctamente'})
+        
+        return jsonify({'error': 'Solo se permiten archivos .py'}), 400
+    except Exception as e:
+        logging.error(f"Error en upload: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route("/delete/<filename>", methods=["DELETE"])
 def delete_file(filename):
-    # ... (mantener c√≥digo original de Flask)
+    try:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'Archivo no encontrado'}), 404
+            
+        os.remove(filepath)
+        return jsonify({'success': f'Archivo {filename} eliminado'})
+    except Exception as e:
+        logging.error(f"Error en delete: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-# Iniciar el bot de Telegram en un hilo separado
+# Iniciar el bot de Telegram solo en desarrollo
 def run_bot():
-    bot.infinity_polling()
+    if os.environ.get('ENV') != 'production':
+        bot.infinity_polling()
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot).start()
