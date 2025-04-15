@@ -2,22 +2,25 @@ import os
 import subprocess
 import shlex
 import logging
+import threading
 import telebot
 from telebot.types import InputFile
 from werkzeug.utils import secure_filename
+from flask import Flask
 
 # Configuración
 UPLOAD_FOLDER = os.path.abspath("uploads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
-
 # Token incluido directamente
 TELEGRAM_TOKEN = '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU'
 
+# Asegurarse de que exista el directorio uploads
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Inicializar el bot de Telegram
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-user_sessions = {}  # Se utilizará el chat ID para guardar sesión: historial y cwd
+user_sessions = {}  # Se usará el chat ID para guardar el historial y el cwd por usuario
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -55,8 +58,7 @@ def execute_command(session_id, command):
     session_info["history"] = clean_history(session_info["history"])
     return output
 
-# Handlers de Telegram
-
+# Handlers del bot de Telegram
 @bot.message_handler(commands=['start', 'ayuda'])
 def send_help(message):
     help_text = (
@@ -126,5 +128,18 @@ def handle_file(message):
     except Exception as e:
         bot.reply_to(message, f"Error: {str(e)}")
 
-if __name__ == '__main__':
+# Crear una aplicación Flask mínima para que gunicorn encuentre el atributo "app"
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return "Telegram Bot en ejecución"
+
+def start_bot():
     bot.infinity_polling()
+
+# Iniciar el bot en un hilo separado para que Flask siga funcionando
+threading.Thread(target=start_bot, daemon=True).start()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
