@@ -11,11 +11,13 @@ from werkzeug.exceptions import HTTPException
 import telebot
 from telebot.types import InputFile
 
+# Configuración
 UPLOAD_FOLDER = os.path.abspath("uploads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 
+# Inicializar Flask
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta_default")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -23,11 +25,15 @@ app.config["SESSION_TYPE"] = "filesystem"
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB
 Session(app)
 
+# Inicializar Telegram Bot
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+# Estructuras de datos
 user_sessions = {}
 telegram_sessions = {}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Funciones comunes
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -36,7 +42,10 @@ def clean_history(history):
 
 def execute_command(session_id, command):
     if session_id not in user_sessions:
-        user_sessions[session_id] = {"history": [], "cwd": os.getcwd()}
+        user_sessions[session_id] = {
+            "history": [],
+            "cwd": os.getcwd()
+        }
     user = user_sessions[session_id]
     output = ""
     try:
@@ -60,15 +69,15 @@ def execute_command(session_id, command):
                 output += f"\n[Código salida: {process.returncode}]"
     except Exception as e:
         output = f"Error: {str(e)}"
-
     user["history"].append(f"$ {command}\n{output}")
     user["history"] = clean_history(user["history"])
     return output
 
+# Handlers de Telegram
 @bot.message_handler(commands=['start', 'ayuda'])
 def send_help(message):
     help_text = """
-🖥️ *Consola Web Bot* 🖥️
+Consola Web Bot
 
 Comandos disponibles:
 /start - Iniciar el bot
@@ -95,7 +104,7 @@ def handle_execute(message):
 @bot.message_handler(commands=['archivos'])
 def list_files(message):
     files = os.listdir(UPLOAD_FOLDER)
-    response = "📁 *Archivos subidos:*\n" + "\n".join(files) if files else "No hay archivos subidos"
+    response = "Archivos subidos:\n" + "\n".join(files) if files else "No hay archivos subidos"
     bot.send_message(message.chat.id, response, parse_mode='Markdown')
 
 @bot.message_handler(content_types=['document'])
@@ -103,19 +112,17 @@ def handle_file(message):
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
-
         filename = secure_filename(message.document.file_name)
         if not allowed_file(filename):
             raise ValueError("Solo se permiten archivos .py")
-
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         with open(filepath, 'wb') as new_file:
             new_file.write(downloaded_file)
-
-        bot.reply_to(message, f"✅ Archivo *{filename}* subido correctamente", parse_mode='Markdown')
+        bot.reply_to(message, f"Archivo {filename} subido correctamente", parse_mode='Markdown')
     except Exception as e:
-        bot.reply_to(message, f"❌ Error: {str(e)}")
+        bot.reply_to(message, f"Error: {str(e)}")
 
+# Rutas de Flask
 @app.route("/", methods=["GET"])
 def index():
     try:
@@ -182,9 +189,13 @@ def delete_file(filename):
         logging.error(f"Error en delete: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# Iniciar el bot de Telegram solo si no estamos en Render
+# Iniciar el bot de Telegram solo si se configura RUN_BOT como true (variable de entorno)
 if os.environ.get("RUN_BOT", "false") == "true":
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
 
 def create_app():
     return app
+
+if __name__ == "__main__":
+    # Para ejecución local
+    app.run(host='0.0.0.0', port=5000)
