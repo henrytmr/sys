@@ -11,13 +11,11 @@ from werkzeug.exceptions import HTTPException
 import telebot
 from telebot.types import InputFile
 
-# Configuración
 UPLOAD_FOLDER = os.path.abspath("uploads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU')
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 
-# Inicializar Flask
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta_default")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -25,15 +23,11 @@ app.config["SESSION_TYPE"] = "filesystem"
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB
 Session(app)
 
-# Inicializar Telegram Bot
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-# Estructuras de datos
 user_sessions = {}
 telegram_sessions = {}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Funciones comunes
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -42,14 +36,9 @@ def clean_history(history):
 
 def execute_command(session_id, command):
     if session_id not in user_sessions:
-        user_sessions[session_id] = {
-            "history": [],
-            "cwd": os.getcwd()
-        }
-    
+        user_sessions[session_id] = {"history": [], "cwd": os.getcwd()}
     user = user_sessions[session_id]
     output = ""
-    
     try:
         if command.startswith("cd "):
             new_dir = command[3:].strip()
@@ -69,15 +58,13 @@ def execute_command(session_id, command):
             output = stdout + stderr
             if process.returncode != 0:
                 output += f"\n[Código salida: {process.returncode}]"
-                
     except Exception as e:
         output = f"Error: {str(e)}"
-    
+
     user["history"].append(f"$ {command}\n{output}")
     user["history"] = clean_history(user["history"])
     return output
 
-# Handlers de Telegram
 @bot.message_handler(commands=['start', 'ayuda'])
 def send_help(message):
     help_text = """
@@ -116,31 +103,26 @@ def handle_file(message):
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
-        
+
         filename = secure_filename(message.document.file_name)
         if not allowed_file(filename):
             raise ValueError("Solo se permiten archivos .py")
-            
+
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         with open(filepath, 'wb') as new_file:
             new_file.write(downloaded_file)
-            
+
         bot.reply_to(message, f"✅ Archivo *{filename}* subido correctamente", parse_mode='Markdown')
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {str(e)}")
 
-# Rutas de Flask
 @app.route("/", methods=["GET"])
 def index():
     try:
         if "session_id" not in session:
             session_id = str(uuid.uuid4())
             session["session_id"] = session_id
-            user_sessions[session_id] = {
-                "history": [],
-                "cwd": os.getcwd()
-            }
-        
+            user_sessions[session_id] = {"history": [], "cwd": os.getcwd()}
         files = os.listdir(UPLOAD_FOLDER)
         return render_template("index.html", files=files)
     except Exception as e:
@@ -153,15 +135,17 @@ def execute():
         session_id = session.get("session_id")
         if not session_id or session_id not in user_sessions:
             return jsonify({"error": "Sesión inválida"}), 401
-            
         data = request.get_json()
         command = data.get("command", "").strip()
         if not command:
-            return jsonify({"output": "", "history": user_sessions[session_id]["history"], "cwd": user_sessions[session_id]["cwd"]})
-        
+            return jsonify({
+                "output": "",
+                "history": user_sessions[session_id]["history"],
+                "cwd": user_sessions[session_id]["cwd"]
+            })
         output = execute_command(session_id, command)
         return jsonify({
-            "output": output, 
+            "output": output,
             "history": user_sessions[session_id]["history"],
             "cwd": user_sessions[session_id]["cwd"]
         })
@@ -174,16 +158,13 @@ def upload_file():
     try:
         if 'archivo' not in request.files:
             return jsonify({'error': 'No se encontró el archivo'}), 400
-            
         file = request.files['archivo']
         if file.filename == '':
             return jsonify({'error': 'No se seleccionó archivo'}), 400
-        
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             return jsonify({'success': f'Archivo {filename} subido correctamente'})
-        
         return jsonify({'error': 'Solo se permiten archivos .py'}), 400
     except Exception as e:
         logging.error(f"Error en upload: {str(e)}")
@@ -195,18 +176,15 @@ def delete_file(filename):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
         if not os.path.exists(filepath):
             return jsonify({'error': 'Archivo no encontrado'}), 404
-            
         os.remove(filepath)
         return jsonify({'success': f'Archivo {filename} eliminado'})
     except Exception as e:
         logging.error(f"Error en delete: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# Iniciar el bot de Telegram solo en desarrollo
-def run_bot():
-    if os.environ.get('ENV') != 'production':
-        bot.infinity_polling()
+# Iniciar el bot de Telegram solo si no estamos en Render
+if os.environ.get("RUN_BOT", "false") == "true":
+    threading.Thread(target=bot.infinity_polling, daemon=True).start()
 
-if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    app.run(host='0.0.0.0', port=5000)
+def create_app():
+    return app
