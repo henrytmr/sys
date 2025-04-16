@@ -1,5 +1,12 @@
-Flask==2.3.3
-gunicorn==21.2.0
-pyTelegramBotAPI==4.15.4
+progressbar
+bs4
+pyTelegramBotAPI
+Telethon
 requests
-beautifulsoup4
+multivolumefile
+youtube-dl
+mega.py
+emoji
+ujson
+pytz
+tenacity
