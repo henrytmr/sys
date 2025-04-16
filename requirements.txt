@@ -4,7 +4,6 @@ python-telegram-bot
 bs4 
 user_agent 
 ping3 
-nmap 
 tcping 
 pyping 
 youtube_dl 
