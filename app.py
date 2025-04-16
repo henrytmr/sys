@@ -1,269 +1,655 @@
-from distutils.command.config import config
-from youtube_dl import cache
-from telethon import TelegramClient, events, sync
-import asyncio
-import os
+from pyobigram.utils import sizeof_fmt,get_file_size,createID,nice_time
+from pyobigram.client import ObigramClient,inlineQueryResultArticle
+from MoodleClient import MoodleClient
+
+from JDatabase import JsonDatabase
 import zipfile
-import re
-import requests
-from zipfile import ZipFile , ZipInfo 
-import multiFile
-import random
-from bs4 import BeautifulSoup
+import os
+import infos
+import xdlink
+import mediafire
+#from megacli.mega import Mega
+#import megacli.megafolder as megaf
+#import megacli.mega
+import datetime
 import time
-from datetime import datetime
-import pytz
-import Client
-import traceback
-from config import*
+import youtube
+import NexCloudClient
 
-IST=pytz.timezone('Cuba')
-
-links =[]
-
-Users_Data=[f'{USUARIO}',f'{USUARIO_ID}']
-
-def sizeof_fmt(num, suffix='B'):
-    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
-        if abs(num) < 1024.0:
-            return "%3.1f%s%s" % (num, unit, suffix)
-        num /= 1024.0
-    return "%.1f%s%s" % (num, 'Yi', suffix)
-
-async def get_file_size(file):
-    file_size = os.stat(file)
-    return file_size.st_size
+from pydownloader.downloader import Downloader
+from ProxyCloud import ProxyCloud
+import ProxyCloud
+import socket
+import S5Crypto
+developer = 'luisernesto95'
 
 
-async def upload_to_moodle(f,msg):
-            #rand_user=Users_Data[random.randint(0,len(Users_Data)-1)]
-            rand_user=Users_Data
-            size = await get_file_size(f)
-            try:
-                await msg.edit(f'⚙️Subiendo...\n\n🔖Archivo: {f}\n\n📦Tamaño: {sizeof_fmt(size)}')
-                moodle = Client.Client(rand_user[0],f'{PASSWORD}')
-                loged = moodle.login()
-                if loged == True:
-                    resp = moodle.upload_file(f,rand_user[1])
-                    data=str(resp).replace('\\','')
-                    await msg.edit(f'✅ Subido ✅\n\n🔖Archivo: {str(f)}\n📦Tamaño Total: {str(sizeof_fmt(size))}\n\n👤Usuario: <code>{USUARIO}</code> \n🔑Contraseña: <code>{PASSWORD}</code>\n\n🔗Enlace:\n\n'+data, parse_mode="html") 
-                    
-                 
-            except Exception as e:
-                print(traceback.format_exc(),'Error en el upload')
-                
-
-
-
-async def process_file(file,bot,ev,msg):
+def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
     try:
-
-        msgurls = ''
-        maxsize = 1024 * 1024 * 1024 * 2
-        file_size = await get_file_size(file)
-        chunk_size = 1024 * 1024 * ZIP_MB
-        #rand_user=Users_Data[random.randint(0,len(Users_Data)-1)]
-        rand_user=Users_Data
-        
-        if file_size > chunk_size:
-            await msg.edit(f'🛠Comprimiendo...\n\n🔖Archivo: {str(file)}\n\n📦Tamaño Total: {str(sizeof_fmt(file_size))}\n\n📚Partes: {len(multiFile.files)} - {str(sizeof_fmt(chunk_size))}')
-            mult_file =  multiFile.MultiFile(file+'.7z',chunk_size)
-            zip = ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
-            zip.write(file)
-            zip.close()
-            mult_file.close()
-            nuvContent = ''
-            i = 0
-            data=''
-            for f in multiFile.files:
-                await msg.edit(f'⚙️Subiendo...\n\n🔖Archivo: {str(f)}\n\n📦Tamaño: {str(sizeof_fmt(file_size))}\n\n📚Partes: {len(multiFile.files)}/{ZIP_MB} MB')
-                moodle = Client.Client(rand_user[0], f'{PASSWORD}')
-                loged = moodle.login()
-                if loged == True:
-                    resp = moodle.upload_file(f,rand_user[1])
-                    data=data+'\n\n'+str(resp).replace('\\','')
-                    
-            await msg.edit(f'✅ Subido ✅\n\n🔖Archivo: {str(f)}\n📦Tamaño: {str(sizeof_fmt(file_size))}\n\n👤Usuario: <code>{USUARIO}</code>\n🔑Contraseña: <code>{PASSWORD}</code>\n\n🔗Enlace:'+data, parse_mode="html")
-
-        else:
-            await upload_to_moodle(file,msg)
-            os.unlink(file)
-
-    except Exception as e:
-            await msg.edit('(Error Subida) - ' + str(e))
-
-
-async def processMy(ev,bot):
-    try:
-        text=ev.message.text
-        message = await bot.send_message(ev.chat_id, '⚙️Procesando...')
-        if ev.message.file:
-            await message.edit('⚙️Descargando Archivo...')
-            file_name = await bot.download_media(ev.message)
-            await process_file(file_name,bot,ev,message)
-    except Exception as e:
-                        await bot.send_message(str(e))
-
-def req_file_size(req):
-    try:
-        return int(req.headers['content-length'])
-    except:
-        return 0
-
-def get_url_file_name(url,req):
-    try:
-        if "Content-Disposition" in req.headers.keys():
-            return str(re.findall("filename=(.+)", req.headers["Content-Disposition"])[0])
-        else:
-            tokens = str(url).split('/');
-            return tokens[len(tokens)-1]
-    except:
-           tokens = str(url).split('/');
-           return tokens[len(tokens)-1]
-    return ''
-
-def save(filename,size):
-    mult_file =  multiFile.MultiFile(filename+'.7z',size)
-    zip = ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
-    zip.write(filename)
-    zip.close()
-    mult_file.close()
-
-async def upload_to_moodle_url(msg,bot,ev,url):
-    rand_user=Users_Data
-    await msg.edit('⚙️Analizando...')
-    html = BeautifulSoup(url, "html.parser")
-    print(html.find_all('apk'))
-    req = requests.get(url, stream=True, allow_redirects=True)
-    if req.status_code == 200:
-        try:
-            chunk_size=1024 * 1024 * 49
-            chunk_sizeFixed=1024 * 1024 * 49
-            filename = get_url_file_name(url,req)
-            filename = filename.replace('"',"")
-            file = open(filename, 'wb')
-            await msg.edit('⚙️Descargando...'+ filename)
-            for chunk in req.iter_content(chunk_size=chunk_sizeFixed):
-                if chunk:
-                    print(file.tell())
-                    file.write(chunk)
-                else:
-                    print('no hay chunk')    
-
-            file.close()
-            await process_file(file.name,bot,ev,msg)
-        except:
-            print(traceback.format_exc())            
-
-        multiFile.files.clear()    
+        bot = args[0]
+        message = args[1]
+        thread = args[2]
+        if thread.getStore('stop'):
+            downloader.stop()
+        downloadingInfo = infos.createDownloading(filename,totalBits,currentBits,speed,time,tid=thread.id)
+        bot.editMessageText(message,downloadingInfo)
+    except Exception as ex: print(str(ex))
     pass
 
+def uploadFile(filename,currentBits,totalBits,speed,time,args):
+    try:
+        bot = args[0]
+        message = args[1]
+        originalfile = args[2]
+        thread = args[3]
+        downloadingInfo = infos.createUploading(filename,totalBits,currentBits,speed,time,originalfile)
+        bot.editMessageText(message,downloadingInfo)
+    except Exception as ex: print(str(ex))
+    pass
 
-async def lista(ev,bot,msg):
-    global links
-    for message in links:
+def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jdb=None):
+    try:
+        bot.editMessageText(message,'🤜Preparando Para Subir☁...')
+        evidence = None
+        fileid = None
+        user_info = jdb.get_user(update.message.sender.username)
+        cloudtype = user_info['cloudtype']
+        proxy = ProxyCloud.parse(user_info['proxy'])
+        if cloudtype == 'moodle':
+            client = MoodleClient(user_info['moodle_user'],
+                                  user_info['moodle_password'],
+                                  user_info['moodle_host'],
+                                  user_info['moodle_repo_id'],
+                                  proxy=proxy)
+            loged = client.login()
+            itererr = 0
+            if loged:
+                if user_info['uploadtype'] == 'evidence':
+                    evidences = client.getEvidences()
+                    evidname = str(filename).split('.')[0]
+                    for evid in evidences:
+                        if evid['name'] == evidname:
+                            evidence = evid
+                            break
+                    if evidence is None:
+                        evidence = client.createEvidence(evidname)
+
+                originalfile = ''
+                if len(files)>1:
+                    originalfile = filename
+                draftlist = []
+                for f in files:
+                    f_size = get_file_size(f)
+                    resp = None
+                    iter = 0
+                    while resp is None:
+                          if user_info['uploadtype'] == 'evidence':
+                             fileid,resp = client.upload_file(f,evidence,fileid,progressfunc=uploadFile,args=(bot,message,originalfile,thread),tokenize=tokenize)
+                             draftlist.append(resp)
+                          if user_info['uploadtype'] == 'draft':
+                             fileid,resp = client.upload_file_draft(f,progressfunc=uploadFile,args=(bot,message,originalfile,thread),tokenize=tokenize)
+                             draftlist.append(resp)
+                          if user_info['uploadtype'] == 'blog':
+                             fileid,resp = client.upload_file_blog(f,progressfunc=uploadFile,args=(bot,message,originalfile,thread),tokenize=tokenize)
+                             draftlist.append(resp)
+                          if user_info['uploadtype'] == 'calendario':
+                             fileid,resp = client.upload_file_calendar(f,progressfunc=uploadFile,args=(bot,message,originalfile,thread),tokenize=tokenize)
+                             draftlist.append(resp)
+                          if user_info['uploadtype'] == 'perfil':
+                             fileid,resp = client.upload_file_perfil(f,progressfunc=uploadFile,args=(bot,message,originalfile,thread),tokenize=tokenize)
+                             draftlist.append(resp)
+                          iter += 1
+                          if iter>=10:
+                              break
+                    os.unlink(f)
+                if user_info['uploadtype'] == 'evidence':
+                    try:
+                        client.saveEvidence(evidence)
+                    except:pass
+                return draftlist
+            else:
+                bot.editMessageText(message,'❌Error En La Pagina❌')
+        elif cloudtype == 'cloud':
+            tokenize = False
+            if user_info['tokenize']!=0:
+               tokenize = True
+            bot.editMessageText(message,'🤜Subiendo ☁ Espere Mientras... 😄')
+            host = user_info['moodle_host']
+            user = user_info['moodle_user']
+            passw = user_info['moodle_password']
+            remotepath = user_info['dir']
+            client = NexCloudClient.NexCloudClient(user,passw,host,proxy=proxy)
+            loged = client.login()
+            if loged:
+               originalfile = ''
+               if len(files)>1:
+                    originalfile = filename
+               filesdata = []
+               for f in files:
+                   data = client.upload_file(f,path=remotepath,progressfunc=uploadFile,args=(bot,message,originalfile,thread),tokenize=tokenize)
+                   filesdata.append(data)
+                   os.unlink(f)
+               return filesdata
+        return None
+    except Exception as ex:
+        bot.editMessageText(message,'❌Error❌\n' + str(ex))
+        return None
+
+
+def processFile(update,bot,message,file,thread=None,jdb=None):
+    file_size = get_file_size(file)
+    getUser = jdb.get_user(update.message.sender.username)
+    max_file_size = 1024 * 1024 * getUser['zips']
+    file_upload_count = 0
+    client = None
+    findex = 0
+    if file_size > max_file_size:
+        compresingInfo = infos.createCompresing(file,file_size,max_file_size)
+        bot.editMessageText(message,compresingInfo)
+        zipname = str(file).split('.')[0] + createID()
+        mult_file = zipfile.MultiFile(zipname,max_file_size)
+        zip = zipfile.ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
+        zip.write(file)
+        zip.close()
+        mult_file.close()
+        client = processUploadFiles(file,file_size,mult_file.files,update,bot,message,jdb=jdb)
         try:
-            multiFile.clear()
-            text = message.message.text
-            if message.message.file:
-                msg = await bot.send_message(ev.chat_id,"⚙️Descargando..."+text)
-                file_name = await bot.download_media(message.message)
-                await process_file(file_name,bot,ev,msg)
-            elif 'https' in text or 'http' in text:
-                await upload_to_moodle_url(msg,bot,ev,url=text)       
-        except Exception as e:
-            await bot.send_message(ev.chat_id,e)
-    links=[]                 
-
-    
-bot = TelegramClient( 
-    'bot', api_id=API_ID, api_hash=API_HASH).start(bot_token =BOT_TOKEN ) 
- 
-action = 0
-actual_file = ''
-
-@bot.on(events.NewMessage()) 
-async def process(ev: events.NewMessage.Event):
-    global links
-    text = ev.message.text
-    file = ev.message.file
-    multiFile.clear()
-    user_id = ev.message.peer_id.user_id
-    if user_id in OWNER:
-        if '#watch' in text:
-            await bot.send_message(ev.chat_id,'🕠Esperando...')
-        elif 'mega.nz' in text:
-            #await down_mega(bot,ev,text)
-            links.append(ev)
-        elif 'https' in text or 'http' in text:
-            msg= await bot.send_message(ev.chat_id,'🔗Enlace Encontrado y añadido a procesos... /up')
-            links.append(ev)
-        elif file:
-            await bot.send_message(ev.chat_id,'📁Archivo Encontrado y añadido a procesos... /up')
-            links.append(ev)          
-        elif ev.message.file:
-            links.append(ev)    
-            #await processMy(ev,bot)
-        elif '#clear' in text:
-            links=[]
-        
-@bot.on(events.NewMessage(pattern='/info'))
-async def info(ev: events.NewMessage.Event):
-    print('info...')
-    user_id = ev.message.peer_id.user_id
-    if user_id in OWNER:
-
-        await bot.send_message(ev.chat_id,f'❕Información❕\n\n📡Moodle: {MOODLE_URL}\n👤Usuario: <code>{USUARIO}</code>\n🔑Contraseña: <code>{PASSWORD}</code>\n📚Tamaño de zip: {ZIP_MB}',parse_mode='HTML') 
+            os.unlink(file)
+        except:pass
+        file_upload_count = len(zipfile.files)
     else:
-        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')   
-
-@bot.on(events.NewMessage(pattern='/start'))
-async def process(ev: events.NewMessage.Event):
-    print('start...')
-    user_id = ev.message.peer_id.user_id
-    if user_id in OWNER:
-        Hora=str(datetime.now(IST).time()).split(".")
-        Hora.pop(-1)
-        h="".join(map(str, Hora))
-        
-        
-        await bot.send_message(ev.chat_id,f'✅ Se inicio correctamente el Bot ✅\n\n❕Usa /help para aprender sobre mis funciones.')
+        client = processUploadFiles(file,file_size,[file],update,bot,message,jdb=jdb)
+        file_upload_count = 1
+    bot.editMessageText(message,'🤜Preparando Archivo📄...')
+    evidname = ''
+    files = []
+    if client:
+        if getUser['cloudtype'] == 'moodle':
+            if getUser['uploadtype'] == 'evidence':
+                try:
+                    evidname = str(file).split('.')[0]
+                    txtname = evidname + '.txt'
+                    evidences = client.getEvidences()
+                    for ev in evidences:
+                        if ev['name'] == evidname:
+                           files = ev['files']
+                           break
+                        if len(ev['files'])>0:
+                           findex+=1
+                    client.logout()
+                except:pass
+            if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
+               for draft in client:
+                   files.append({'name':draft['file'],'directurl':draft['url']})
+        else:
+            for data in client:
+                files.append({'name':data['name'],'directurl':data['url']})
+        bot.deleteMessage(message.chat.id,message.message_id)
+        finishInfo = infos.createFinishUploading(file,file_size,max_file_size,file_upload_count,file_upload_count,findex)
+        filesInfo = infos.createFileMsg(file,files)
+        bot.sendMessage(message.chat.id,finishInfo+'\n'+filesInfo,parse_mode='html')
+        if len(files)>0:
+            txtname = str(file).split('/')[-1].split('.')[0] + '.txt'
+            sendTxt(txtname,files,update,bot)
     else:
-        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️') 
+        bot.editMessageText(message,'❌Error En La Pagina❌')
+
+def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
+    downloader = Downloader()
+    file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
+    if not downloader.stoping:
+        if file:
+            processFile(update,bot,message,file,jdb=jdb)
+        else:
+            megadl(update,bot,message,url,file_name,thread,jdb=jdb)
+
+def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
+    megadl = megacli.mega.Mega({'verbose': True})
+    megadl.login()
+    try:
+        info = megadl.get_public_url_info(megaurl)
+        file_name = info['name']
+        megadl.download_url(megaurl,dest_path=None,dest_filename=file_name,progressfunc=downloadFile,args=(bot,message,thread))
+        if not megadl.stoping:
+            processFile(update,bot,message,file_name,thread=thread)
+    except:
+        files = megaf.get_files_from_folder(megaurl)
+        for f in files:
+            file_name = f['name']
+            megadl._download_file(f['handle'],f['key'],dest_path=None,dest_filename=file_name,is_public=False,progressfunc=downloadFile,args=(bot,message,thread),f_data=f['data'])
+            if not megadl.stoping:
+                processFile(update,bot,message,file_name,thread=thread)
+        pass
+    pass
+
+def sendTxt(name,files,update,bot):
+                txt = open(name,'w')
+                fi = 0
+                for f in files:
+                    separator = ''
+                    if fi < len(files)-1:
+                        separator += '\n'
+                    txt.write(f['directurl']+separator)
+                    fi += 1
+                txt.close()
+                bot.sendFile(update.message.chat.id,name)
+                os.unlink(name)
+
+def onmessage(update,bot:ObigramClient):
+    password = os.environ.get('password')
+    if developer == password :
+        try :
+            thread = bot.this_thread
+            username = update.message.sender.username
+            tl_admin_user = os.environ.get('tl_admin_user')
+
+            #set in debug
+            tl_admin_user = os.environ.get('administrador')
+
+            jdb = JsonDatabase('database')
+            jdb.check_create()
+            jdb.load()
+
+            user_info = jdb.get_user(username)
+
+            if username == tl_admin_user or user_info :  # validate user
+                if user_info is None:
+                    if username == tl_admin_user:
+                        jdb.create_admin(username)
+                    else:
+                        jdb.create_user(username)
+                    user_info = jdb.get_user(username)
+                    jdb.save()
+            else:return
 
 
-@bot.on(events.NewMessage(pattern='/pro'))
-async def process(ev: events.NewMessage.Event):  
-    user_id = ev.message.peer_id.user_id
-    if user_id in OWNER:
-        await bot.send_message(ev.chat_id, f'📋Procesos:\n\n{len(links)}\n\n/up\n/clear')  
-    else: 
-        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')
-         
+            msgText = ''
+            try: msgText = update.message.text
+            except:pass
+
+            # comandos de admin
+            if '/add_user' in msgText:
+                isadmin = jdb.is_admin(username)
+                if isadmin:
+                    try:
+                        user = str(msgText).split(' ')[1]
+                        jdb.create_user(user)
+                        jdb.save()
+                        msg = '😃Genial @'+user+' ahora tiene acceso al bot👍'
+                        bot.sendMessage(update.message.chat.id,msg)
+                    except:
+                        bot.sendMessage(update.message.chat.id,'❌Error en el comando /add_user username❌')
+                else:
+                    bot.sendMessage(update.message.chat.id,'❌No Tiene Permiso❌')
+                return
+            if '/add_admin' in msgText:
+                isadmin = jdb.is_admin(username)
+                if isadmin:
+                    try:
+                        user = str(msgText).split(' ')[1]
+                        jdb.create_admin(user)
+                        jdb.save()
+                        msg = '😃Genial @'+user+' ahora es Admin del BOT'
+                        bot.sendMessage(update.message.chat.id,msg)
+                    except:
+                        bot.sendMessage(update.message.chat.id,'❌Error en el comando /add_admin username❌')
+                else:
+                    bot.sendMessage(update.message.chat.id,'❌No Tiene Permiso❌')
+                return
+            if '/kick_user' in msgText:
+                isadmin = jdb.is_admin(username)
+                if isadmin:
+                    try:
+                        user = str(msgText).split(' ')[1]
+                        if user == username:
+                            bot.sendMessage(update.message.chat.id,'❌No Se Puede Expulsar Usted❌')
+                            return
+                        jdb.remove(user)
+                        jdb.save()
+                        msg = '🦶Fuera @'+user+' Expulsado❌'
+                        bot.sendMessage(update.message.chat.id,msg)
+                    except:
+                        bot.sendMessage(update.message.chat.id,'❌Error en el comando /kick_user username❌')
+                else:
+                    bot.sendMessage(update.message.chat.id,'❌No Tiene Permiso❌')
+                return
+            if '/getdb' in msgText:
+                isadmin = jdb.is_admin(username)
+                if isadmin:
+                    bot.sendMessage(update.message.chat.id,'Base De Datos👇')
+                    bot.sendFile(update.message.chat.id,'database.jdb')
+                else:
+                    bot.sendMessage(update.message.chat.id,'❌No Tiene Permiso❌')
+                return
+            # end
+
+            # comandos de usuario
+            if '/tutorial' in msgText:
+                tuto = open('tuto.txt','r')
+                bot.sendMessage(update.message.chat.id,tuto.read())
+                tuto.close()
+                return
+            if '/myuser' in msgText:
+                getUser = user_info
+                if getUser:
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo)
+                    return
+            if '/zips' in msgText:
+                getUser = user_info
+                if getUser:
+                    try:
+                       size = int(str(msgText).split(' ')[1])
+                       getUser['zips'] = size
+                       jdb.save_data_user(username,getUser)
+                       jdb.save()
+                       msg = '😃Genial los zips seran de '+ sizeof_fmt(size*1024*1024)+' las partes👍'
+                       bot.sendMessage(update.message.chat.id,msg)
+                    except:
+                       bot.sendMessage(update.message.chat.id,'❌Error en el comando /zips size❌')
+                    return
+            if '/account' in msgText:
+                try:
+                    account = str(msgText).split(' ',2)[1].split(',')
+                    user = account[0]
+                    passw = account[1]
+                    getUser = user_info
+                    if getUser:
+                        getUser['moodle_user'] = user
+                        getUser['moodle_password'] = passw
+                        jdb.save_data_user(username,getUser)
+                        jdb.save()
+                        statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                except:
+                    bot.sendMessage(update.message.chat.id,'❌Error en el comando /account user,password❌')
+                return
+            if '/host' in msgText:
+                try:
+                    cmd = str(msgText).split(' ',2)
+                    host = cmd[1]
+                    getUser = user_info
+                    if getUser:
+                        getUser['moodle_host'] = host
+                        jdb.save_data_user(username,getUser)
+                        jdb.save()
+                        statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                except:
+                    bot.sendMessage(update.message.chat.id,'❌Error en el comando /host moodlehost❌')
+                return
+            if '/repoid' in msgText:
+                try:
+                    cmd = str(msgText).split(' ',2)
+                    repoid = int(cmd[1])
+                    getUser = user_info
+                    if getUser:
+                        getUser['moodle_repo_id'] = repoid
+                        jdb.save_data_user(username,getUser)
+                        jdb.save()
+                        statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                except:
+                    bot.sendMessage(update.message.chat.id,'❌Error en el comando /repo id❌')
+                return
+            if '/cloud' in msgText:
+                try:
+                    cmd = str(msgText).split(' ',2)
+                    repoid = cmd[1]
+                    getUser = user_info
+                    if getUser:
+                        getUser['cloudtype'] = repoid
+                        jdb.save_data_user(username,getUser)
+                        jdb.save()
+                        statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                except:
+                    bot.sendMessage(update.message.chat.id,'❌Error en el comando /cloud (moodle or cloud)❌')
+                return
+            if '/uptype' in msgText:
+                try:
+                    cmd = str(msgText).split(' ',2)
+                    tipo = cmd[1]
+                    getUser = user_info
+                    if getUser:
+                        if  tipo == 'evidence' or tipo == 'draft' or tipo == 'perfil' or tipo == 'blog':
+                            getUser['uploadtype'] = tipo
+                            jdb.save_data_user(username,getUser)
+                            jdb.save()
+                            statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                            bot.sendMessage(update.message.chat.id,statInfo)
+                        elif tipo == 'calendar' or tipo == 'calendario':
+                            getUser['uploadtype'] = 'calendario'
+                            jdb.save_data_user(username,getUser)
+                            jdb.save()
+                            statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                            bot.sendMessage(update.message.chat.id,statInfo)
+                        else :
+                            bot.sendMessage(update.message.chat.id,'✖️Tienes que poner uno de estos Métodos de Subidas ✖️\n↖️ evidence  -  draft  -  perfil  -  blog  -  calendar o calendario')
+                except:
+                    bot.sendMessage(update.message.chat.id,'❌Error en el comando /uptype (typo de subida (evidence,draft,blog))❌')
+                return
+
+            if '/view_proxy' in msgText:
+                try:
+                    getUser = user_info
+                    
+                    if getUser:
+                        proxy = getUser['proxy']
+                        bot.sendMessage(update.message.chat.id,proxy)
+                except:
+                    if user_info:
+                        proxy = user_info['proxy']
+                        bot.sendMessage(update.message.chat.id,proxy)
+                return
+            
+            if '/search_proxy' in msgText:
+                msg_start = 'Buscando Proxy. Puede durar asi que espere😂'
+                bot.sendMessage(update.message.chat.id,msg_start)
+                print("Buscando proxy...")
+                for port in range(2080,2085):
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    result = sock.connect_ex(('181.225.253.188',port))  
+                    
+                    if result == 0:
+                        print ("Puerto abierto!")
+                        print (f"Puerto: {port}")  
+                        proxy = f'181.225.253.188:{port}'
+                        proxy_new = S5Crypto.encrypt(f'{proxy}')
+                        msg = 'Su nuevo proxy es:\n\nsocks5://' + proxy_new
+                        bot.sendMessage(update.message.chat.id,msg)
+                        break
+                    else: 
+                        print ("Error...Buscando...")
+                        print (f"Buscando en el puerto: {port}")
+                        sock.close()
+                return
+
+            if '/encriptar_proxy' in msgText:
+                proxy_sms = str(msgText).split(' ')[1]
+                proxy = S5Crypto.encrypt(f'{proxy_sms}')
+                bot.sendMessage(update.message.chat.id, f'🔒Encriptado Completado:\n{proxy}')
+                return
+            
+            if '/desencriptar_proxy' in msgText:
+                proxy_sms = str(msgText).split(' ')[1]
+                proxy_de = S5Crypto.decrypt(f'{proxy_sms}')
+                bot.sendMessage(update.message.chat.id, f'🔓Desencriptado Completado:\n{proxy_de}')
+                return
+            
+            if '/set_proxy' in msgText:
+                try:
+                    cmd = str(msgText).split(' ',2)
+                    proxy = cmd[1]
+                    getUser = user_info
+                    if getUser:
+                        getUser['proxy'] = proxy
+                        jdb.save_data_user(username,getUser)
+                        jdb.save()
+                        statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                except:
+                    if user_info:
+                        user_info['proxy'] = ''
+                        statInfo = infos.createStat(username,user_info,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                return
+            if '/del_proxy' in msgText:
+                try:
+                    getUser = user_info
+                    if getUser:
+                        getUser['proxy'] = ''
+                        jdb.save_data_user(username,getUser)
+                        jdb.save()
+                        succes_msg = 'PROXY ELIMINADO CON ÉXITO ....'
+                        bot.sendMessage(update.message.chat.id,succes_msg)
+                except:
+                    if user_info:
+                        user_info['proxy'] = ''
+                        statInfo = infos.createStat(username,user_info,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                return
+            
+            if '/dir' in msgText:
+                try:
+                    cmd = str(msgText).split(' ',2)
+                    repoid = cmd[1]
+                    getUser = user_info
+                    if getUser:
+                        getUser['dir'] = repoid + '/'
+                        jdb.save_data_user(username,getUser)
+                        jdb.save()
+                        statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                        bot.sendMessage(update.message.chat.id,statInfo)
+                except:
+                    bot.sendMessage(update.message.chat.id,'❌Error en el comando /dir folder❌')
+                return
+            if '/cancel_' in msgText:
+                try:
+                    cmd = str(msgText).split('_',2)
+                    tid = cmd[1]
+                    tcancel = bot.threads[tid]
+                    msg = tcancel.getStore('msg')
+                    tcancel.store('stop',True)
+                    time.sleep(3)
+                    bot.editMessageText(msg,'❌Tarea Cancelada❌')
+                except Exception as ex:
+                    print(str(ex))
+                return
+            #end
+
+            message = bot.sendMessage(update.message.chat.id,'⏳ Cargando ...')
+
+            thread.store('msg',message)
+
+            if '/start' in msgText:
+                start_msg = '✅BIENVENIDO✅🔱Estas usando #RTFree la cadena de bot para subir y descargar de la nube sin consumo de MB. 🌀Disfruta de tu estancia en el bot.\n⚠️Si quiere contactar con los dueños pq posee alguna duda escribanos😁 @rockstar984 o @TuguerX\n\n👾Code por: @AresDza'
+                bot.editMessageText(message,start_msg)
+            elif '/files' == msgText and user_info['cloudtype']=='moodle':
+                 proxy = ProxyCloud.parse(user_info['proxy'])
+                 client = MoodleClient(user_info['moodle_user'],
+                                       user_info['moodle_password'],
+                                       user_info['moodle_host'],
+                                       user_info['moodle_repo_id'],proxy=proxy)
+                 loged = client.login()
+                 if loged:
+                        List = client.getEvidences()
+                        List1=List[:45]
+                        total=len(List)
+                        List2=List[46:]
+                        info1 = f'<b>Archivos: {str(total)}</b>\nEliminar todo: /del_all\n\n'
+                        info = f'<b>Archivos: {str(total)}</b>\nEliminar todo: /del_all\n\n'
+                        
+                        i = 1
+                        for item in List1:
+                            info += '<b>/del_'+str(i)+'</b>\n'
+                            for file in item['files']:                  
+                                info += '<a href="'+file['directurl']+'">\t'+file['name']+'</a>\n'
+                            info+='\n'
+                            i+=1
+                            bot.editMessageText(message, f'{info}',parse_mode="html")
+                
+                        if len(List2)>0:
+                            bot.sendMessage(update.message.chat.id,'Conectando con Lista número 2...')
+                            for item in List2:
+                        
+                                info1 += '<b>/del_'+str(i)+'</b>\n'
+                                for file in item['files']:                  
+                                    info1 += '<a href="'+file['url']+'">\t'+file['name']+'</a>\n'
+                                info1+='\n'
+                                i+=1
+                                bot.editMessageText(message, f'{info1}',parse_mode="html")
+                 else:
+                    bot.editMessageText(message,'❌Error y Causas🧐\n1-Revise su Cuenta\n2-Servidor Desabilitado: '+client.path)
+            elif '/txt_' in msgText and user_info['cloudtype']=='moodle':
+                 findex = str(msgText).split('_')[1]
+                 findex = int(findex)
+                 proxy = ProxyCloud.parse(user_info['proxy'])
+                 client = MoodleClient(user_info['moodle_user'],
+                                       user_info['moodle_password'],
+                                       user_info['moodle_host'],
+                                       user_info['moodle_repo_id'],proxy=proxy)
+                 loged = client.login()
+                 if loged:
+                     evidences = client.getEvidences()
+                     evindex = evidences[findex]
+                     txtname = evindex['name']+'.txt'
+                     sendTxt(txtname,evindex['files'],update,bot)
+                     client.logout()
+                     bot.editMessageText(message,'TxT Aqui👇')
+                 else:
+                    bot.editMessageText(message,'❌Error y Causas🧐\n1-Revise su Cuenta\n2-Servidor Desabilitado: '+client.path)
+                 pass
+            elif '/del_' in msgText and user_info['cloudtype']=='moodle':
+                findex = int(str(msgText).split('_')[1])
+                proxy = ProxyCloud.parse(user_info['proxy'])
+                client = MoodleClient(user_info['moodle_user'],
+                                       user_info['moodle_password'],
+                                       user_info['moodle_host'],
+                                       user_info['moodle_repo_id'],
+                                       proxy=proxy)
+                loged = client.login()
+                if loged:
+                    evfile = client.getEvidences()[findex]
+                    client.deleteEvidence(evfile)
+                    client.logout()
+                    bot.editMessageText(message,'🗑Archivo Eliminado Correctamente🗑')
+                else:
+                    bot.editMessageText(message,'❌Error y Causas🧐\n1-Revise su Cuenta\n2-Servidor Desabilitado: '+client.path)
+            elif 'http' in msgText:
+                url = msgText
+                ddl(update,bot,message,url,file_name='',thread=thread,jdb=jdb)
+            else:
+                #if update:
+                #    api_id = os.environ.get('api_id')
+                #    api_hash = os.environ.get('api_hash')
+                #    bot_token = os.environ.get('bot_token')
+                #  
+                # set in debug
+                #    api_id = 17897679
+                #    api_hash = 'e7681747482f5867af9de8171136a89b'
+                #    bot_token = '5355334143:AAFNAEAz2PkNzg6Z0FCrBkvBv5jp5AWYi2Q'
+
+                #    chat_id = int(update.message.chat.id)
+                #    message_id = int(update.message.message_id)
+                #    import asyncio
+                #    asyncio.run(tlmedia.download_media(api_id,api_hash,bot_token,chat_id,message_id))
+                #    return
+                bot.editMessageText(message,'🛑 Error al Intentar leer como una URL 🛑')
+        except Exception as ex:
+               print(str(ex))
 
 
-@bot.on(events.NewMessage(pattern='/clear'))
-async def process(ev: events.NewMessage.Event):  
-    user_id = ev.message.peer_id.user_id
-    if user_id in OWNER:
-        await bot.send_message(ev.chat_id, f'🗑 {len(links)} Procesos Limpiados 🗑\n/pro')
-        links.clear()
-    else:
-        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')
-    
+def main():
+    bot_token = os.environ.get('bot_token')
 
 
-@bot.on(events.NewMessage(pattern='/up'))
-async def process(ev: events.NewMessage.Event):
-    print('Up...') 
-    user_id = ev.message.peer_id.user_id
-    if user_id in OWNER:
-        msg = await bot.send_message(ev.chat_id,'🔬Analizando...')
-        await lista(ev,bot,msg)
-    else:
-        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')
+    bot = ObigramClient(bot_token)
+    bot.onMessage(onmessage)
+    bot.run()
 
-
-
-print('App Run...')
-bot.loop.run_forever()
+if __name__ == '__main__':
+    try:
+        main()
+    except:
+        main()

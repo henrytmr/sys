@@ -1,39 +1,23 @@
-{
-    "name": "moodle-uploader",
-    "description": "Pvto heroku",
-    "repository": "https://github.com/Tnoob-dev/moodle-bot3",
-    "env": {
-        "BOT_TOKEN": {
-            "description": "Cogelo en @Botfather",
-            "value": ""
-        },
-        "API_ID": {
-            "description":"Cogelo en my.telegram.org",
-            "value": ""
-        },
-        "API_HASH": {
-            "description": "Cogelo en my.telegram.org",
-            "value": ""
-        },
-        "USUARIO_MOODLE": {
-            "description": "Usuario de tu moodle",
-            "value": ""
-        },
-        "PASSW:MOODLE": {
-            "description": "Contraseña de tu moodle",
-            "value": ""
-        },
-        "ID_MOODLE": {
-            "description":"ID de tu cuenta de moodle, lo coges en la seccion de perfil",
-            "value": ""
-        },
-        "TAMANO_ZIPS": {
-            "description": "Tamaño de los zips en el que se picaran las cosas",
-            "value": ""
-        },
-        "MOODLE_URL": {
-            "description": "Enlace de la moodle sin https://, por ejemplo: moodle.uclv.edu.cu",
-            "value": ""
-        }
+﻿{
+  "name": "Bot para Subir a las Moodle V7.2 Modded",
+  "description": "By t.me/AresDza",
+  "env": {
+    "administrador": {
+      "description": "Tu usuario de Telegram sin el Símbolo de @",
+      "value": ""
+    },
+    "bot_token": {
+      "description": "Token del BOT (Se obtiene en BOT Father)",
+      "value": ""
+    },
+   "password": {
+      "description": "Contraseña de Despliegue (SI NO TIENES LA CONTRASEÑA NO PODRÁS DESPLEGAR)",
+      "value": "" 
     }
+  },
+  "buildpacks": [
+    {
+      "url": "https://github.com/heroku/heroku-buildpack-python.git"
+    }
+  ]
 }
