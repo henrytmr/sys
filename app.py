@@ -21,7 +21,7 @@ IST=pytz.timezone('Cuba')
 
 links =[]
 
-Users_Data=[f'{luisernesto95}',f'{1744818151}']
+Users_Data=[f'{USUARIO}',f'{USUARIO_ID}']
 
 def sizeof_fmt(num, suffix='B'):
     for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
