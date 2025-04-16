@@ -14,4 +14,3 @@ pyrogram
 tgcrypto
 aiohttp
 yarl
-gunicorn
