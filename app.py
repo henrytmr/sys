@@ -10,18 +10,19 @@ from telebot.types import InputFile
 from werkzeug.utils import secure_filename
 from flask import Flask
 
-# Configuracion
+# Configuración
 UPLOAD_FOLDER = os.path.abspath("uploads")
 YOUTUBE_FOLDER = os.path.abspath("youtube_downloads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
 TELEGRAM_TOKEN = '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU'
+# o usa os.getenv("TELEGRAM_TOKEN")
 
 # Asegurar directorios
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
 
-# Inicializar bot
+# Inicializar bot y usuario sesiones
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 user_sessions = {}
 
@@ -44,155 +45,137 @@ def execute_command(session_id, command):
             session_info["cwd"] = os.getcwd()
             output = "Directorio actual: " + session_info["cwd"]
         else:
-            process = subprocess.Popen(
+            proc = subprocess.Popen(
                 shlex.split(command),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=session_info["cwd"]
             )
-            stdout, stderr = process.communicate(timeout=15)
+            stdout, stderr = proc.communicate(timeout=15)
             output = stdout + stderr
-            if process.returncode != 0:
-                output += f"\n[Codigo salida: {process.returncode}]"
+            if proc.returncode != 0:
+                output += f"\n[Codigo salida: {proc.returncode}]"
     except Exception as e:
-        output = f"Error: {str(e)}"
+        output = f"Error: {e}"
     session_info["history"].append(f"$ {command}\n{output}")
     session_info["history"] = clean_history(session_info["history"])
     return output
+
+# ----- Handlers Consola y Archivos -----
 
 @bot.message_handler(commands=['start', 'ayuda'])
 def send_help(message):
     help_text = (
         "Consola Web Bot\n\n"
         "Comandos disponibles:\n"
-        "/start - Iniciar el bot\n"
-        "/ayuda - Mostrar esta ayuda\n"
-        "/ejecutar <comando> - Ejecutar comando en la terminal\n"
-        "/archivos - Listar archivos subidos\n"
-        "/subir - Subir archivo .py (envia el archivo como documento)\n"
-        "/eliminar <nombre> - Eliminar archivo\n"
-        "/cd <directorio> - Cambiar directorio\n"
-        "/historial - Mostrar ultimos comandos\n"
-        "/descarga <URL> - Descargar video de YouTube y enviarlo en partes"
+        "/start, /ayuda         - Mostrar ayuda\n"
+        "/ejecutar <comando>    - Ejecutar comando en la terminal\n"
+        "/cd <directorio>       - Cambiar directorio\n"
+        "/historial             - Mostrar últimos comandos\n"
+        "/archivos              - Listar archivos subidos\n"
+        "/subir                 - Subir archivo .py (envía el archivo)\n"
+        "/eliminar <nombre>     - Eliminar archivo subido\n"
+        "/descargar <URL>       - Descargar video de YouTube en partes ZIP\n"
     )
     bot.send_message(message.chat.id, help_text)
 
 @bot.message_handler(commands=['ejecutar'])
 def handle_execute(message):
     try:
-        command = message.text.split(' ', 1)[1]
-        session_id = str(message.chat.id)
-        output = execute_command(session_id, command)
-        bot.send_message(message.chat.id, "```\n" + output + "\n```", parse_mode='Markdown')
+        cmd = message.text.split(' ', 1)[1]
+        out = execute_command(str(message.chat.id), cmd)
+        bot.send_message(message.chat.id, f"```\n{out}\n```", parse_mode='Markdown')
     except IndexError:
         bot.send_message(message.chat.id, "Uso: /ejecutar <comando>")
+
+@bot.message_handler(commands=['cd'])
+def change_dir(message):
+    try:
+        path = message.text.split(' ', 1)[1]
+        out = execute_command(str(message.chat.id), f"cd {path}")
+        bot.send_message(message.chat.id, out)
+    except IndexError:
+        bot.send_message(message.chat.id, "Uso: /cd <directorio>")
+
+@bot.message_handler(commands=['historial'])
+def show_history(message):
+    sid = str(message.chat.id)
+    if sid in user_sessions:
+        history = "\n".join(user_sessions[sid]["history"])
+        bot.send_message(message.chat.id, f"Historial:\n{history}")
+    else:
+        bot.send_message(message.chat.id, "No hay historial aún.")
 
 @bot.message_handler(commands=['archivos'])
 def list_files(message):
     files = os.listdir(UPLOAD_FOLDER)
-    response = "Archivos subidos:\n" + "\n".join(files) if files else "No hay archivos subidos"
-    bot.send_message(message.chat.id, response)
-
-@bot.message_handler(commands=['historial'])
-def show_history(message):
-    session_id = str(message.chat.id)
-    if session_id in user_sessions:
-        history = "\n".join(user_sessions[session_id]["history"])
-        bot.send_message(message.chat.id, "Historial:\n" + history)
-    else:
-        bot.send_message(message.chat.id, "No hay historial aun.")
+    resp = "Archivos subidos:\n" + "\n".join(files) if files else "No hay archivos subidos"
+    bot.send_message(message.chat.id, resp)
 
 @bot.message_handler(commands=['eliminar'])
 def delete_file(message):
     try:
-        filename = message.text.split(' ', 1)[1]
-        filepath = os.path.join(UPLOAD_FOLDER, secure_filename(filename))
-        if os.path.exists(filepath):
-            os.remove(filepath)
-            bot.send_message(message.chat.id, f"Archivo {filename} eliminado.")
+        fname = message.text.split(' ', 1)[1]
+        fp = os.path.join(UPLOAD_FOLDER, secure_filename(fname))
+        if os.path.exists(fp):
+            os.remove(fp)
+            bot.send_message(message.chat.id, f"Archivo {fname} eliminado.")
         else:
             bot.send_message(message.chat.id, "Archivo no encontrado.")
     except IndexError:
         bot.send_message(message.chat.id, "Uso: /eliminar <nombre>")
 
-@bot.message_handler(commands=['descarga'])
+@bot.message_handler(content_types=['document'])
+def handle_upload(message):
+    try:
+        finfo = bot.get_file(message.document.file_id)
+        data = bot.download_file(finfo.file_path)
+        name = secure_filename(message.document.file_name)
+        if not allowed_file(name):
+            raise ValueError("Solo archivos .py permitidos")
+        with open(os.path.join(UPLOAD_FOLDER, name), 'wb') as f:
+            f.write(data)
+        bot.reply_to(message, f"Archivo {name} subido correctamente.")
+    except Exception as e:
+        bot.reply_to(message, f"Error: {e}")
+
+# ----- /descargar -> invocar downloader.py -----
+
+@bot.message_handler(commands=['descargar'])
 def handle_descarga(message):
     try:
         url = message.text.split(' ', 1)[1]
-        threading.Thread(target=process_youtube_download, args=(message, url)).start()
+        bot.reply_to(message, f"Iniciando descarga: {url}")
+        threading.Thread(target=run_download, args=(message.chat.id, url), daemon=True).start()
     except IndexError:
-        bot.reply_to(message, "Uso: /descarga <URL de YouTube>")
-    except Exception as e:
-        bot.reply_to(message, f"Error: {str(e)}")
+        bot.reply_to(message, "Uso: /descargar <URL>")
 
-def process_youtube_download(message, url):
-    chat_id = message.chat.id
-    temp_dir = None
+def run_download(chat_id, url):
     try:
-        temp_dir = tempfile.mkdtemp(dir=YOUTUBE_FOLDER)
-        video_path = os.path.join(temp_dir, "video.mp4")
-        yt_dlp_cmd = [
-            'yt-dlp',
-            '-f', 'best',
-            '-o', video_path,
-            url
-        ]
-        result = subprocess.run(yt_dlp_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise Exception(f"Error descargando video: {result.stderr}")
+        # limpia descargas previas
+        shutil.rmtree(YOUTUBE_FOLDER, ignore_errors=True)
+        os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
 
-        zip_base = os.path.join(temp_dir, "output.zip")
-        zip_cmd = [
-            'zip',
-            '-r',
-            '-s', '60m',
-            zip_base,
-            video_path
-        ]
-        result = subprocess.run(zip_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise Exception(f"Error creando ZIP: {result.stderr}")
+        # llama al script downloader.py
+        cmd = ['python3', 'downloader.py', url]
+        res = subprocess.run(cmd, cwd=os.getcwd(), capture_output=True, text=True)
+        if res.returncode != 0:
+            bot.send_message(chat_id, f"Error descarga:\n{res.stderr}")
+            return
 
-        split_files = [f for f in os.listdir(temp_dir) if f.startswith("output.z") or f == "output.zip"]
-
-        def sort_key(f):
-            if f == "output.zip":
-                return (1, 0)
-            parts = f.split(".z")
-            return (0, int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0)
-
-        split_files.sort(key=sort_key)
-
-        for i, filename in enumerate(split_files, 1):
-            src = os.path.join(temp_dir, filename)
-            dest = os.path.join(temp_dir, f"{i}.zip")
-            os.rename(src, dest)
-            with open(dest, 'rb') as f:
-                bot.send_document(chat_id, InputFile(f))
-
+        # envía cada ZIP
+        zips = sorted(f for f in os.listdir(YOUTUBE_FOLDER) if f.endswith('.zip'))
+        for i, fname in enumerate(zips, 1):
+            path = os.path.join(YOUTUBE_FOLDER, fname)
+            with open(path, 'rb') as f:
+                bot.send_document(chat_id, InputFile(f), caption=f"{i}/{len(zips)}")
+        bot.send_message(chat_id, "✅ Descarga completa.")
     except Exception as e:
-        bot.send_message(chat_id, f"Error: {str(e)}")
-    finally:
-        if temp_dir and os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
+        bot.send_message(chat_id, f"Error interno: {e}")
 
-@bot.message_handler(content_types=['document'])
-def handle_file(message):
-    try:
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        filename = secure_filename(message.document.file_name)
-        if not allowed_file(filename):
-            raise ValueError("Solo se permiten archivos .py")
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        with open(filepath, 'wb') as new_file:
-            new_file.write(downloaded_file)
-        bot.reply_to(message, f"Archivo {filename} subido correctamente.")
-    except Exception as e:
-        bot.reply_to(message, f"Error: {str(e)}")
+# ----- Flask + Bot polling -----
 
-# Flask app
 app = Flask(__name__)
 
 @app.route('/')
@@ -200,7 +183,12 @@ def index():
     return "Telegram Bot en ejecución"
 
 def start_bot():
-    bot.infinity_polling()
+    while True:
+        try:
+            bot.infinity_polling()
+        except Exception:
+            logging.exception("Fallo polling, reiniciando en 5s…")
+            time.sleep(5)
 
 threading.Thread(target=start_bot, daemon=True).start()
 

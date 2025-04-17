@@ -17,8 +17,9 @@ yarl
 gunicorn
 Flask==2.3.3
 gunicorn==21.2.0
-pyTelegramBotAPI==4.15.4
+pyTelegramBotAPI
 requests
 beautifulsoup4
 werkzeug==3.0.1
-yt-dlp==2024.03.10
+yt-dlp
+telebot
