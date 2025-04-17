@@ -15,7 +15,7 @@ def human_sleep():
     time.sleep(random.uniform(3, 8))  # pausa de 3 a 8 segundos
 
 
-def download_video(url):
+def download_video(url, temp_dir):
     opts = {
         'format': 'bestvideo+bestaudio/best',
         'merge_output_format': 'mp4',
@@ -26,6 +26,12 @@ def download_video(url):
         'no_warnings': True,
         'quiet': True,
     }
+
+    # Verifica si hay un cookies.txt en el mismo directorio
+    cookies_path = os.path.abspath("cookies.txt")
+    if os.path.isfile(cookies_path):
+        opts['cookiefile'] = cookies_path
+
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
 
@@ -55,7 +61,7 @@ if __name__ == '__main__':
     temp_dir = tempfile.mkdtemp()
     try:
         human_sleep()
-        download_video(url)
+        download_video(url, temp_dir)
         video_file = os.path.join(temp_dir, os.listdir(temp_dir)[0])
         # mover video final a youtube_downloads
         final_path = os.path.join(YOUTUBE_FOLDER, os.path.basename(video_file))
