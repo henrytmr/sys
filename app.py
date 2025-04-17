@@ -15,7 +15,7 @@ UPLOAD_FOLDER = os.path.abspath("uploads")
 YOUTUBE_FOLDER = os.path.abspath("youtube_downloads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
-TELEGRAM_TOKEN = 'TU_TOKEN_DE_TELEGRAM'
+TELEGRAM_TOKEN = '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU'
 
 # Asegurar directorios
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
