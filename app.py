@@ -10,22 +10,21 @@ from telebot.types import InputFile
 from werkzeug.utils import secure_filename
 from flask import Flask
 
-# Configuración
+# Configuracion
 UPLOAD_FOLDER = os.path.abspath("uploads")
 YOUTUBE_FOLDER = os.path.abspath("youtube_downloads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Desde variables de entorno
+TELEGRAM_TOKEN = 'TU_TOKEN_DE_TELEGRAM'
 
-# Crear carpetas necesarias
+# Asegurar directorios
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
 
-# Inicializar el bot
+# Inicializar bot
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 user_sessions = {}
 
-# Funciones auxiliares
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -55,14 +54,13 @@ def execute_command(session_id, command):
             stdout, stderr = process.communicate(timeout=15)
             output = stdout + stderr
             if process.returncode != 0:
-                output += f"\n[Código salida: {process.returncode}]"
+                output += f"\n[Codigo salida: {process.returncode}]"
     except Exception as e:
         output = f"Error: {str(e)}"
     session_info["history"].append(f"$ {command}\n{output}")
     session_info["history"] = clean_history(session_info["history"])
     return output
 
-# Comandos del bot
 @bot.message_handler(commands=['start', 'ayuda'])
 def send_help(message):
     help_text = (
@@ -72,11 +70,11 @@ def send_help(message):
         "/ayuda - Mostrar esta ayuda\n"
         "/ejecutar <comando> - Ejecutar comando en la terminal\n"
         "/archivos - Listar archivos subidos\n"
-        "/subir - Subir archivo .py (envía el archivo como documento)\n"
+        "/subir - Subir archivo .py (envia el archivo como documento)\n"
         "/eliminar <nombre> - Eliminar archivo\n"
         "/cd <directorio> - Cambiar directorio\n"
-        "/historial - Mostrar últimos comandos\n"
-        "/descarga <url> - Descargar video de YouTube y dividirlo en zips"
+        "/historial - Mostrar ultimos comandos\n"
+        "/descarga <URL> - Descargar video de YouTube y enviarlo en partes"
     )
     bot.send_message(message.chat.id, help_text)
 
@@ -103,7 +101,7 @@ def show_history(message):
         history = "\n".join(user_sessions[session_id]["history"])
         bot.send_message(message.chat.id, "Historial:\n" + history)
     else:
-        bot.send_message(message.chat.id, "No hay historial aún.")
+        bot.send_message(message.chat.id, "No hay historial aun.")
 
 @bot.message_handler(commands=['eliminar'])
 def delete_file(message):
@@ -134,22 +132,35 @@ def process_youtube_download(message, url):
     try:
         temp_dir = tempfile.mkdtemp(dir=YOUTUBE_FOLDER)
         video_path = os.path.join(temp_dir, "video.mp4")
-        yt_dlp_cmd = ['yt-dlp', '-f', 'best', '-o', video_path, url]
+        yt_dlp_cmd = [
+            'yt-dlp',
+            '-f', 'best',
+            '-o', video_path,
+            url
+        ]
         result = subprocess.run(yt_dlp_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise Exception(f"Error descargando video: {result.stderr}")
+
         zip_base = os.path.join(temp_dir, "output.zip")
-        zip_cmd = ['zip', '-r', '-s', '60m', zip_base, video_path]
+        zip_cmd = [
+            'zip',
+            '-r',
+            '-s', '60m',
+            zip_base,
+            video_path
+        ]
         result = subprocess.run(zip_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise Exception(f"Error creando ZIP: {result.stderr}")
+
         split_files = [f for f in os.listdir(temp_dir) if f.startswith("output.z") or f == "output.zip"]
 
         def sort_key(f):
             if f == "output.zip":
                 return (1, 0)
             parts = f.split(".z")
-            return (0, int(parts[1]) if parts[1].isdigit() else 0)
+            return (0, int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0)
 
         split_files.sort(key=sort_key)
 
@@ -161,7 +172,7 @@ def process_youtube_download(message, url):
                 bot.send_document(chat_id, InputFile(f))
 
     except Exception as e:
-        bot.send_message(chat_id, f" Error: {str(e)}")
+        bot.send_message(chat_id, f"Error: {str(e)}")
     finally:
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
@@ -181,15 +192,17 @@ def handle_file(message):
     except Exception as e:
         bot.reply_to(message, f"Error: {str(e)}")
 
-# Flask app para Render
+# Flask app
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return "Telegram Bot en ejecución"
+    return "Telegram Bot en ejecuciÃ³n"
 
-# Iniciar bot en hilo separado
 def start_bot():
     bot.infinity_polling()
 
 threading.Thread(target=start_bot, daemon=True).start()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
