@@ -10,3 +10,4 @@ emoji
 ujson
 pytz
 tenacity
+gunicorn
