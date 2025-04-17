@@ -44,11 +44,23 @@ def execute_command(session_id, command):
                 raise ValueError("Directorio no especificado")
             
             new_dir = ' '.join(parts[1:])
-            # Sanitización de ruta
-            new_dir = os.path.normpath(new_dir).replace("\\", "/").lstrip('/')
-            new_dir = new_dir.replace("../", "").replace("..", "")  # Prevenir path traversal
+            # Sanitización de ruta más flexible
+            new_dir = os.path.normpath(new_dir)
             
-            target = os.path.join(session_info["cwd"], new_dir)
+            # Construir ruta absoluta segura
+            if os.path.isabs(new_dir):
+                # Si es ruta absoluta, limitar al directorio base
+                base_dir = os.path.abspath(os.getcwd())
+                target = os.path.abspath(os.path.join(base_dir, new_dir.lstrip('/')))
+            else:
+                # Si es ruta relativa, unir con cwd actual
+                target = os.path.abspath(os.path.join(session_info["cwd"], new_dir))
+            
+            # Verificar que no se salga del directorio permitido
+            base_dir = os.path.abspath(os.getcwd())
+            if not os.path.commonpath([base_dir, target]) == base_dir:
+                raise ValueError("Acceso a directorio no permitido")
+            
             if not os.path.isdir(target):
                 raise FileNotFoundError(f"Directorio no encontrado: {target}")
             
@@ -114,7 +126,88 @@ def change_dir(message):
     except IndexError:
         bot.send_message(message.chat.id, "Uso: /cd <directorio>")
 
-# ... (Los demás handlers permanecen igual, desde @bot.message_handler(commands=['historial']) hasta el final)
+@bot.message_handler(commands=['historial'])
+def show_history(message):
+    session_id = str(message.chat.id)
+    if session_id in user_sessions and user_sessions[session_id]["history"]:
+        history = "\n".join(user_sessions[session_id]["history"])
+        bot.send_message(message.chat.id, f"```\n{history}\n```", parse_mode='Markdown')
+    else:
+        bot.send_message(message.chat.id, "No hay historial de comandos")
+
+@bot.message_handler(commands=['archivos'])
+def list_files(message):
+    try:
+        files = os.listdir(UPLOAD_FOLDER)
+        if files:
+            file_list = "\n".join(files)
+            bot.send_message(message.chat.id, f"Archivos subidos:\n```\n{file_list}\n```", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, "No hay archivos subidos")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al listar archivos: {str(e)}")
+
+@bot.message_handler(content_types=['document'])
+def handle_file(message):
+    if not allowed_file(message.document.file_name):
+        bot.send_message(message.chat.id, "Solo se permiten archivos .py")
+        return
+    
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        filename = secure_filename(message.document.file_name)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        with open(filepath, 'wb') as new_file:
+            new_file.write(downloaded_file)
+        
+        bot.send_message(message.chat.id, f"Archivo {filename} subido correctamente")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al subir archivo: {str(e)}")
+
+@bot.message_handler(commands=['eliminar'])
+def delete_file(message):
+    try:
+        filename = message.text.split(maxsplit=1)[1]
+        filename = secure_filename(filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            bot.send_message(message.chat.id, f"Archivo {filename} eliminado")
+        else:
+            bot.send_message(message.chat.id, f"Archivo {filename} no encontrado")
+    except IndexError:
+        bot.send_message(message.chat.id, "Uso: /eliminar <nombre_archivo>")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al eliminar archivo: {str(e)}")
+
+@bot.message_handler(commands=['descargar'])
+def download_youtube(message):
+    try:
+        url = message.text.split(maxsplit=1)[1]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = subprocess.check_output(
+                ['yt-dlp', '-f', 'best', '-o', f'{temp_dir}/%(title)s.%(ext)s', url],
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            
+            files = os.listdir(temp_dir)
+            if not files:
+                raise ValueError("No se pudo descargar el video")
+            
+            downloaded_file = files[0]
+            shutil.make_archive(os.path.join(YOUTUBE_FOLDER, downloaded_file), 'zip', temp_dir)
+            
+            with open(f"{YOUTUBE_FOLDER}/{downloaded_file}.zip", 'rb') as f:
+                bot.send_document(message.chat.id, InputFile(f))
+    except IndexError:
+        bot.send_message(message.chat.id, "Uso: /descargar <URL>")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al descargar: {str(e)}")
 
 # ----- Flask + Bot polling -----
 
