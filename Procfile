@@ -1,2 +1,1 @@
-worker: python3 app.py
-ps:scale worker=1
+worker: python3 main.py
