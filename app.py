@@ -1,153 +1,269 @@
+from distutils.command.config import config
+from youtube_dl import cache
+from telethon import TelegramClient, events, sync
+import asyncio
 import os
-import subprocess
-import uuid
-import shlex
-import logging
-from flask import Flask, render_template, request, jsonify, session
-from flask_session import Session
-from werkzeug.utils import secure_filename
-from werkzeug.exceptions import HTTPException
+import zipfile
+import re
+import requests
+from zipfile import ZipFile , ZipInfo 
+import multiFile
+import random
+from bs4 import BeautifulSoup
+import time
+from datetime import datetime
+import pytz
+import Client
+import traceback
+from config import*
 
-# Configuración
-UPLOAD_FOLDER = os.path.abspath("uploads")
-ALLOWED_EXTENSIONS = {'py'}
-MAX_HISTORY_LINES = 100
+IST=pytz.timezone('Cuba')
 
-app = Flask("consola_web")
-app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta")
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["SESSION_TYPE"] = "filesystem"
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1MB
-Session(app)
+links =[]
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-user_sessions = {}
+Users_Data=[f'{luisernesto95}',f'{1744818151}']
 
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
 
-# Manejo de errores
-@app.errorhandler(HTTPException)
-def handle_http_exception(e):
-    return render_template("error.html", error=f"{e.code} - {e.name}"), e.code
+async def get_file_size(file):
+    file_size = os.stat(file)
+    return file_size.st_size
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    logging.error(f"Error: {str(e)}")
-    return render_template("error.html", error=f"Error interno: {str(e)}"), 500
 
-# Funciones auxiliares
-def clean_history(history):
-    return history[-MAX_HISTORY_LINES:] if len(history) > MAX_HISTORY_LINES else history
+async def upload_to_moodle(f,msg):
+            #rand_user=Users_Data[random.randint(0,len(Users_Data)-1)]
+            rand_user=Users_Data
+            size = await get_file_size(f)
+            try:
+                await msg.edit(f'⚙️Subiendo...\n\n🔖Archivo: {f}\n\n📦Tamaño: {sizeof_fmt(size)}')
+                moodle = Client.Client(rand_user[0],f'{PASSWORD}')
+                loged = moodle.login()
+                if loged == True:
+                    resp = moodle.upload_file(f,rand_user[1])
+                    data=str(resp).replace('\\','')
+                    await msg.edit(f'✅ Subido ✅\n\n🔖Archivo: {str(f)}\n📦Tamaño Total: {str(sizeof_fmt(size))}\n\n👤Usuario: <code>{USUARIO}</code> \n🔑Contraseña: <code>{PASSWORD}</code>\n\n🔗Enlace:\n\n'+data, parse_mode="html") 
+                    
+                 
+            except Exception as e:
+                print(traceback.format_exc(),'Error en el upload')
+                
 
-# Rutas
-@app.route("/", methods=["GET"])
-def index():
+
+
+async def process_file(file,bot,ev,msg):
     try:
-        if "session_id" not in session:
-            session_id = str(uuid.uuid4())
-            session["session_id"] = session_id
-            user_sessions[session_id] = {
-                "history": [],
-                "cwd": os.getcwd()
-            }
+
+        msgurls = ''
+        maxsize = 1024 * 1024 * 1024 * 2
+        file_size = await get_file_size(file)
+        chunk_size = 1024 * 1024 * ZIP_MB
+        #rand_user=Users_Data[random.randint(0,len(Users_Data)-1)]
+        rand_user=Users_Data
         
-        files = os.listdir(UPLOAD_FOLDER)
-        return render_template("index.html", files=files)
+        if file_size > chunk_size:
+            await msg.edit(f'🛠Comprimiendo...\n\n🔖Archivo: {str(file)}\n\n📦Tamaño Total: {str(sizeof_fmt(file_size))}\n\n📚Partes: {len(multiFile.files)} - {str(sizeof_fmt(chunk_size))}')
+            mult_file =  multiFile.MultiFile(file+'.7z',chunk_size)
+            zip = ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
+            zip.write(file)
+            zip.close()
+            mult_file.close()
+            nuvContent = ''
+            i = 0
+            data=''
+            for f in multiFile.files:
+                await msg.edit(f'⚙️Subiendo...\n\n🔖Archivo: {str(f)}\n\n📦Tamaño: {str(sizeof_fmt(file_size))}\n\n📚Partes: {len(multiFile.files)}/{ZIP_MB} MB')
+                moodle = Client.Client(rand_user[0], f'{PASSWORD}')
+                loged = moodle.login()
+                if loged == True:
+                    resp = moodle.upload_file(f,rand_user[1])
+                    data=data+'\n\n'+str(resp).replace('\\','')
+                    
+            await msg.edit(f'✅ Subido ✅\n\n🔖Archivo: {str(f)}\n📦Tamaño: {str(sizeof_fmt(file_size))}\n\n👤Usuario: <code>{USUARIO}</code>\n🔑Contraseña: <code>{PASSWORD}</code>\n\n🔗Enlace:'+data, parse_mode="html")
+
+        else:
+            await upload_to_moodle(file,msg)
+            os.unlink(file)
+
     except Exception as e:
-        logging.error(f"Error en index: {str(e)}")
-        return render_template("error.html", error=f"Error inicial: {str(e)}"), 500
+            await msg.edit('(Error Subida) - ' + str(e))
 
-@app.route("/execute", methods=["POST"])
-def execute():
+
+async def processMy(ev,bot):
     try:
-        session_id = session.get("session_id")
-        if not session_id or session_id not in user_sessions:
-            return jsonify({"error": "Sesión inválida"}), 401
-            
-        data = request.get_json()
-        command = data.get("command", "").strip()
-        user = user_sessions[session_id]
+        text=ev.message.text
+        message = await bot.send_message(ev.chat_id, '⚙️Procesando...')
+        if ev.message.file:
+            await message.edit('⚙️Descargando Archivo...')
+            file_name = await bot.download_media(ev.message)
+            await process_file(file_name,bot,ev,message)
+    except Exception as e:
+                        await bot.send_message(str(e))
 
-        if not command:
-            return jsonify({"output": "", "history": user["history"], "cwd": user["cwd"]})
-        
-        if command == "clear":
-            user["history"] = []
-            return jsonify({"output": "", "history": user["history"], "cwd": user["cwd"]})
-        
-        output = ""
+def req_file_size(req):
+    try:
+        return int(req.headers['content-length'])
+    except:
+        return 0
+
+def get_url_file_name(url,req):
+    try:
+        if "Content-Disposition" in req.headers.keys():
+            return str(re.findall("filename=(.+)", req.headers["Content-Disposition"])[0])
+        else:
+            tokens = str(url).split('/');
+            return tokens[len(tokens)-1]
+    except:
+           tokens = str(url).split('/');
+           return tokens[len(tokens)-1]
+    return ''
+
+def save(filename,size):
+    mult_file =  multiFile.MultiFile(filename+'.7z',size)
+    zip = ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
+    zip.write(filename)
+    zip.close()
+    mult_file.close()
+
+async def upload_to_moodle_url(msg,bot,ev,url):
+    rand_user=Users_Data
+    await msg.edit('⚙️Analizando...')
+    html = BeautifulSoup(url, "html.parser")
+    print(html.find_all('apk'))
+    req = requests.get(url, stream=True, allow_redirects=True)
+    if req.status_code == 200:
         try:
-            if command.startswith("cd "):
-                new_dir = command[3:].strip()
-                target = os.path.join(user["cwd"], new_dir)
-                os.chdir(target)
-                user["cwd"] = os.getcwd()
-                output = f"Directorio: {user['cwd']}"
-            else:
-                process = subprocess.Popen(
-                    shlex.split(command),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    cwd=user["cwd"]
-                )
-                stdout, stderr = process.communicate(timeout=15)
-                output = stdout + stderr
-                if process.returncode != 0:
-                    output += f"\n[Código salida: {process.returncode}]"
-        
+            chunk_size=1024 * 1024 * 49
+            chunk_sizeFixed=1024 * 1024 * 49
+            filename = get_url_file_name(url,req)
+            filename = filename.replace('"',"")
+            file = open(filename, 'wb')
+            await msg.edit('⚙️Descargando...'+ filename)
+            for chunk in req.iter_content(chunk_size=chunk_sizeFixed):
+                if chunk:
+                    print(file.tell())
+                    file.write(chunk)
+                else:
+                    print('no hay chunk')    
+
+            file.close()
+            await process_file(file.name,bot,ev,msg)
+        except:
+            print(traceback.format_exc())            
+
+        multiFile.files.clear()    
+    pass
+
+
+async def lista(ev,bot,msg):
+    global links
+    for message in links:
+        try:
+            multiFile.clear()
+            text = message.message.text
+            if message.message.file:
+                msg = await bot.send_message(ev.chat_id,"⚙️Descargando..."+text)
+                file_name = await bot.download_media(message.message)
+                await process_file(file_name,bot,ev,msg)
+            elif 'https' in text or 'http' in text:
+                await upload_to_moodle_url(msg,bot,ev,url=text)       
         except Exception as e:
-            output = f"Error: {str(e)}"
-        
-        user["history"].append(f"$ {command}\n{output}")
-        user["history"] = clean_history(user["history"])
-        return jsonify({
-            "output": output, 
-            "history": user["history"],
-            "cwd": user["cwd"]
-        })
-        
-    except Exception as e:
-        logging.error(f"Error execute: {str(e)}")
-        return jsonify({"error": "Error interno"}), 500
+            await bot.send_message(ev.chat_id,e)
+    links=[]                 
 
-@app.route("/upload", methods=["POST"])
-def upload_file():
-    try:
-        if 'archivo' not in request.files:
-            return jsonify({'error': 'No se encontró el archivo'}), 400
-            
-        file = request.files['archivo']
-        if file.filename == '':
-            return jsonify({'error': 'No se seleccionó archivo'}), 400
-        
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return jsonify({'success': f'Archivo {filename} subido correctamente'})
-        
-        return jsonify({'error': 'Solo se permiten archivos .py'}), 400
-        
-    except Exception as e:
-        logging.error(f"Error en upload: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+    
+bot = TelegramClient( 
+    'bot', api_id=API_ID, api_hash=API_HASH).start(bot_token =BOT_TOKEN ) 
+ 
+action = 0
+actual_file = ''
 
-@app.route("/delete/<filename>", methods=["DELETE"])
-def delete_file(filename):
-    try:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'Archivo no encontrado'}), 404
-            
-        os.remove(filepath)
-        return jsonify({'success': f'Archivo {filename} eliminado'})
-    except Exception as e:
-        logging.error(f"Error en delete: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+@bot.on(events.NewMessage()) 
+async def process(ev: events.NewMessage.Event):
+    global links
+    text = ev.message.text
+    file = ev.message.file
+    multiFile.clear()
+    user_id = ev.message.peer_id.user_id
+    if user_id in OWNER:
+        if '#watch' in text:
+            await bot.send_message(ev.chat_id,'🕠Esperando...')
+        elif 'mega.nz' in text:
+            #await down_mega(bot,ev,text)
+            links.append(ev)
+        elif 'https' in text or 'http' in text:
+            msg= await bot.send_message(ev.chat_id,'🔗Enlace Encontrado y añadido a procesos... /up')
+            links.append(ev)
+        elif file:
+            await bot.send_message(ev.chat_id,'📁Archivo Encontrado y añadido a procesos... /up')
+            links.append(ev)          
+        elif ev.message.file:
+            links.append(ev)    
+            #await processMy(ev,bot)
+        elif '#clear' in text:
+            links=[]
+        
+@bot.on(events.NewMessage(pattern='/info'))
+async def info(ev: events.NewMessage.Event):
+    print('info...')
+    user_id = ev.message.peer_id.user_id
+    if user_id in OWNER:
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+        await bot.send_message(ev.chat_id,f'❕Información❕\n\n📡Moodle: {MOODLE_URL}\n👤Usuario: <code>{USUARIO}</code>\n🔑Contraseña: <code>{PASSWORD}</code>\n📚Tamaño de zip: {ZIP_MB}',parse_mode='HTML') 
+    else:
+        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')   
+
+@bot.on(events.NewMessage(pattern='/start'))
+async def process(ev: events.NewMessage.Event):
+    print('start...')
+    user_id = ev.message.peer_id.user_id
+    if user_id in OWNER:
+        Hora=str(datetime.now(IST).time()).split(".")
+        Hora.pop(-1)
+        h="".join(map(str, Hora))
+        
+        
+        await bot.send_message(ev.chat_id,f'✅ Se inicio correctamente el Bot ✅\n\n❕Usa /help para aprender sobre mis funciones.')
+    else:
+        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️') 
+
+
+@bot.on(events.NewMessage(pattern='/pro'))
+async def process(ev: events.NewMessage.Event):  
+    user_id = ev.message.peer_id.user_id
+    if user_id in OWNER:
+        await bot.send_message(ev.chat_id, f'📋Procesos:\n\n{len(links)}\n\n/up\n/clear')  
+    else: 
+        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')
+         
+
+
+@bot.on(events.NewMessage(pattern='/clear'))
+async def process(ev: events.NewMessage.Event):  
+    user_id = ev.message.peer_id.user_id
+    if user_id in OWNER:
+        await bot.send_message(ev.chat_id, f'🗑 {len(links)} Procesos Limpiados 🗑\n/pro')
+        links.clear()
+    else:
+        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')
+    
+
+
+@bot.on(events.NewMessage(pattern='/up'))
+async def process(ev: events.NewMessage.Event):
+    print('Up...') 
+    user_id = ev.message.peer_id.user_id
+    if user_id in OWNER:
+        msg = await bot.send_message(ev.chat_id,'🔬Analizando...')
+        await lista(ev,bot,msg)
+    else:
+        await bot.send_message(ev.chat_id,'❗️Acceso Denegado❗️')
+
+
+
+print('App Run...')
+bot.loop.run_forever()
