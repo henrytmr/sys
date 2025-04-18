@@ -10,120 +10,95 @@ import logging
 
 # Configuración
 YOUTUBE_FOLDER = os.path.abspath("youtube_downloads")
-FFMPEG_PATH = "/opt/render/project/src/bin/ffmpeg"
-FFPROBE_PATH = "/opt/render/project/src/bin/ffprobe"
+CHUNK_SIZE = 50 * 1024 * 1024  # 50MB
 MAX_RETRIES = 3
-CHUNK_SIZE_MB = 50
 
 # Configurar logging
-logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def setup_directories():
-    os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
-
-def verify_ffmpeg():
-    """Verifica que los binarios existan y sean ejecutables"""
-    if not all(os.path.exists(p) for p in [FFMPEG_PATH, FFPROBE_PATH]):
-        logger.error("Binarios ffmpeg/ffprobe no encontrados")
-        return False
-    
-    try:
-        subprocess.run([FFMPEG_PATH, "-version"], check=True, stdout=subprocess.DEVNULL)
-        subprocess.run([FFPROBE_PATH, "-version"], check=True, stdout=subprocess.DEVNULL)
-        return True
-    except Exception as e:
-        logger.error(f"Error verificando binarios: {str(e)}")
-        return False
-
-def download_video(url, temp_dir):
-    """Descarga el video con configuración mejorada"""
-    opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
-        'ffmpeg_location': FFMPEG_PATH,
+def configurar_ytdl():
+    """Configura yt-dlp con parámetros optimizados"""
+    return yt_dlp.YoutubeDL({
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+        'outtmpl': os.path.join(tempfile.gettempdir(), 'ytdl/%(title)s.%(ext)s'),
+        'ffmpeg_location': os.getenv('FFMPEG_PATH', '/opt/render/project/src/bin/ffmpeg'),
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'retries': 3,
+        'retries': MAX_RETRIES,
+        'fragment_retries': MAX_RETRIES,
         'ignoreerrors': False,
+        'no_warnings': True,
         'quiet': True,
-        'paths': {
-            'home': temp_dir,
-            'temp': temp_dir
-        },
-        'postprocessor_args': ['-hide_banner', '-loglevel error']
-    }
-    
-    # Configurar cookies si existen
-    cookies_path = os.path.abspath("cookies.txt")
-    if os.path.isfile(cookies_path):
-        opts['cookiefile'] = cookies_path
+        'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
+    })
 
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+def descargar_video(url):
+    """Maneja la descarga con reintentos"""
+    ydl = configurar_ytdl()
+    for intento in range(MAX_RETRIES):
+        try:
             info = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info)
-    except Exception as e:
-        logger.error(f"Error en descarga: {str(e)}")
-        return None
+        except yt_dlp.DownloadError as e:
+            logger.error(f"Intento {intento+1} fallido: {str(e)}")
+            if intento == MAX_RETRIES - 1:
+                raise
+            time.sleep(random.randint(2, 5))
+    return None
 
-def split_and_zip(source_path, dest_folder):
+def dividir_zip(archivo_entrada, carpeta_salida):
     """Divide el archivo en partes ZIP"""
-    zips = []
-    chunk_size = CHUNK_SIZE_MB * 1024 * 1024
-    file_name = os.path.basename(source_path)
+    nombre_base = os.path.basename(archivo_entrada)
+    partes = []
     
-    with open(source_path, 'rb') as f:
-        part_num = 1
+    with open(archivo_entrada, 'rb') as f:
+        parte_num = 1
         while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
+            contenido = f.read(CHUNK_SIZE)
+            if not contenido:
                 break
-            zip_name = os.path.join(dest_folder, f"{part_num}.zip")
-            with ZipFile(zip_name, 'w', ZIP_DEFLATED) as zf:
-                zf.writestr(file_name, chunk)
-            zips.append(zip_name)
-            part_num += 1
-    
-    return zips
+            nombre_zip = os.path.join(carpeta_salida, f"{parte_num}.zip")
+            with ZipFile(nombre_zip, 'w', ZIP_DEFLATED) as zf:
+                zf.writestr(nombre_base, contenido)
+            partes.append(nombre_zip)
+            parte_num += 1
+    return partes
 
-def main(url):
-    """Flujo principal de descarga"""
-    setup_directories()
+def main():
+    url = sys.argv[1]
+    os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
     
-    if not verify_ffmpeg():
-        logger.error("Verificación de ffmpeg fallida")
-        return False
-    
-    temp_dir = tempfile.mkdtemp()
     try:
-        video_path = download_video(url, temp_dir)
+        # Descargar video
+        video_path = descargar_video(url)
         if not video_path or not os.path.exists(video_path):
-            logger.error("No se pudo descargar el video")
+            logger.error("No se pudo obtener el video")
             return False
         
-        final_path = os.path.join(YOUTUBE_FOLDER, os.path.basename(video_path))
-        shutil.move(video_path, final_path)
-        split_and_zip(final_path, YOUTUBE_FOLDER)
-        os.remove(final_path)
-        return True
+        # Mover a carpeta destino
+        destino = os.path.join(YOUTUBE_FOLDER, os.path.basename(video_path))
+        shutil.move(video_path, destino)
         
+        # Dividir y comprimir
+        dividir_zip(destino, YOUTUBE_FOLDER)
+        os.remove(destino)  # Eliminar original
+        
+        return True
     except Exception as e:
-        logger.error(f"Error en proceso principal: {str(e)}")
+        logger.error(f"Error crítico: {str(e)}")
         return False
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
+    if len(sys.argv) != 2:
         print("Uso: python downloader.py <URL>")
         sys.exit(1)
     
-    if main(sys.argv[1]):
-        print("Proceso completado exitosamente")
+    if main():
+        print("Proceso exitoso")
         sys.exit(0)
     else:
-        print("Error en el proceso de descarga")
+        print("Error en el proceso")
         sys.exit(1)

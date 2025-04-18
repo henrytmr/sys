@@ -7,6 +7,7 @@ import telebot
 import shutil
 import tempfile
 import time
+import traceback
 from telebot.types import InputFile
 from werkzeug.utils import secure_filename
 from flask import Flask
@@ -29,16 +30,12 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 user_sessions = {}
 app = Flask(__name__)
 
-# --- Funciones mejoradas ---
+# --- Funciones principales mejoradas ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def clean_history(history):
     return history[-MAX_HISTORY_LINES:] if len(history) > MAX_HISTORY_LINES else history
-
-def validate_path(base_dir, target_path):
-    """Valida que la ruta esté dentro del directorio base permitido"""
-    return os.path.commonpath([base_dir, os.path.abspath(target_path)]) == base_dir
 
 def execute_command(session_id, command):
     if session_id not in user_sessions:
@@ -52,19 +49,18 @@ def execute_command(session_id, command):
     output = ""
     
     try:
-        # Manejo especial para ffmpeg
-        if command.startswith("ffmpeg "):
-            command = command.replace("--version", "-version", 1)
-            
-        if command.startswith("cd "):
-            parts = shlex.split(command, posix=True)
+        # Corrección automática para comandos ffmpeg
+        corrected_command = command.replace("--version", "-version") if "ffmpeg" in command else command
+        
+        if corrected_command.startswith("cd "):
+            parts = shlex.split(corrected_command, posix=True)
             if len(parts) < 2:
                 raise ValueError("Directorio no especificado")
             
             new_dir = ' '.join(parts[1:])
             target = os.path.normpath(os.path.join(session_info["cwd"], new_dir))
             
-            if not validate_path(session_info["base_dir"], target):
+            if not os.path.commonpath([session_info["base_dir"], target]) == session_info["base_dir"]:
                 raise ValueError("Acceso a directorio no permitido")
             
             if not os.path.isdir(target):
@@ -73,74 +69,70 @@ def execute_command(session_id, command):
             session_info["cwd"] = target
             output = f"Directorio actual: {session_info['cwd']}"
         else:
-            args = shlex.split(command, posix=True)
             env = os.environ.copy()
             env["PATH"] = f"/opt/render/project/src/bin:{env.get('PATH', '')}"
             
             proc = subprocess.Popen(
-                args,
+                shlex.split(corrected_command, posix=True),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=session_info["cwd"],
                 env=env
             )
-            stdout, stderr = proc.communicate(timeout=30)
+            stdout, stderr = proc.communicate(timeout=20)
             output = stdout + stderr
             if proc.returncode != 0:
                 output += f"\n[Código salida: {proc.returncode}]"
                 
     except Exception as e:
         output = f"Error: {str(e)}"
-        logging.error(f"Error ejecutando comando: {command}\n{str(e)}")
+        logging.error(f"Error en comando '{command}': {traceback.format_exc()}")
     
     session_info["history"].append(f"$ {command}\n{output}")
     session_info["history"] = clean_history(session_info["history"])
     return output
 
-# --- Handlers actualizados ---
+# --- Handler de descarga mejorado ---
 @bot.message_handler(commands=['descargar'])
-def handle_download(message):
+def download_youtube(message):
     try:
-        url = message.text.split(maxsplit=1)[1].split('?')[0]  # Limpiar parámetros de URL
+        url = message.text.split(maxsplit=1)[1].split('?')[0]  # Limpiar parámetros URL
         
-        # Verificación previa de URL
-        if not any(domain in url for domain in ['youtube.com', 'youtu.be']):
+        if not any(dominio in url for dominio in ['youtube.com', 'youtu.be']):
             bot.reply_to(message, "❌ URL de YouTube no válida")
             return
             
-        bot.reply_to(message, "⏳ Iniciando descarga...")
+        bot.reply_to(message, "⏳ Procesando solicitud...")
         
         # Configurar entorno para ffmpeg
         env = os.environ.copy()
         env.update({
-            "PATH": f"/opt/render/project/src/bin:{env.get('PATH', '')}",
+            "PATH": f"/opt/render/project/src/bin:{env['PATH']}",
             "FFMPEG_PATH": FFMPEG_PATH,
             "FFPROBE_PATH": FFPROBE_PATH
         })
         
-        # Ejecutar en segundo plano
-        def download_task():
+        def tarea_descarga():
             try:
-                cmd = ['python3', 'downloader.py', url]
-                result = subprocess.run(
-                    cmd,
-                    cwd=os.getcwd(),
+                # Ejecutar downloader.py con entorno modificado
+                resultado = subprocess.run(
+                    ['python3', 'downloader.py', url],
                     capture_output=True,
                     text=True,
                     env=env,
-                    timeout=600
+                    timeout=600  # 10 minutos máximo
                 )
                 
-                if result.returncode != 0:
-                    error_msg = result.stderr or "Error desconocido"
-                    bot.send_message(message.chat.id, f"❌ Error en descarga:\n<pre>{error_msg}</pre>", parse_mode='HTML')
+                if resultado.returncode != 0:
+                    error = resultado.stderr or "Error desconocido"
+                    bot.send_message(message.chat.id, f"❌ Fallo en descarga:\n```\n{error}\n```", parse_mode='Markdown')
                     return
                 
-                # Enviar archivos ZIP
-                zips = sorted(f for f in os.listdir(YOUTUBE_FOLDER) if f.endswith('.zip'))
-                for i, fname in enumerate(zips, 1):
-                    with open(os.path.join(YOUTUBE_FOLDER, fname), 'rb') as f:
+                # Enviar archivos resultantes
+                zips = sorted([f for f in os.listdir(YOUTUBE_FOLDER) if f.endswith('.zip')], key=lambda x: int(x.split('.')[0]))
+                for i, archivo in enumerate(zips, 1):
+                    with open(os.path.join(YOUTUBE_FOLDER, archivo), 'rb') as f:
                         bot.send_document(
                             message.chat.id,
                             InputFile(f),
@@ -149,50 +141,23 @@ def handle_download(message):
                         )
                 bot.send_message(message.chat.id, "✅ Descarga completada!")
             except Exception as e:
-                bot.send_message(message.chat.id, f"❌ Error interno:\n<pre>{str(e)}</pre>", parse_mode='HTML')
+                bot.send_message(message.chat.id, f"🔥 Error crítico:\n```\n{str(e)}\n```", parse_mode='Markdown')
                 logging.error(f"Error en descarga: {traceback.format_exc()}")
         
-        threading.Thread(target=download_task, daemon=True).start()
+        threading.Thread(target=tarea_descarga, daemon=True).start()
         
     except IndexError:
         bot.send_message(message.chat.id, "Uso: /descargar <URL>")
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Error:\n<pre>{str(e)}</pre>", parse_mode='HTML')
+        bot.send_message(message.chat.id, f"⚠️ Error inicial: {str(e)}")
 
 # ... (resto de handlers se mantienen igual) ...
 
-# --- Verificación de entorno ---
-@bot.message_handler(commands=['verificar'])
-def check_environment(message):
-    """Verificar dependencias críticas"""
-    checks = [
-        ("FFmpeg", [FFMPEG_PATH, "-version"]),
-        ("FFprobe", [FFPROBE_PATH, "-version"]),
-        ("yt-dlp", ["yt-dlp", "--version"])
-    ]
-    
-    report = []
-    for name, cmd in checks:
-        try:
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=10
-            )
-            version = result.stdout.split('\n')[0] if result.stdout else "?"
-            report.append(f"✅ {name}: {version.split(' ')[0]}")
-        except Exception as e:
-            report.append(f"❌ {name}: Error ({str(e)})")
-    
-    bot.send_message(message.chat.id, "\n".join(report))
-
-# --- Inicio de Flask ---
+# --- Configuración Flask ---
 def start_bot():
     while True:
         try:
-            bot.infinity_polling(timeout=30, long_polling_timeout=20)
+            bot.infinity_polling(timeout=30, long_polling_timeout=25)
         except Exception as e:
             logging.error(f"Error en polling: {str(e)}\n{traceback.format_exc()}")
             time.sleep(10)
