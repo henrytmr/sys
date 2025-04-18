@@ -20,5 +20,5 @@ pyTelegramBotAPI
 requests
 beautifulsoup4
 werkzeug==3.0.1
-yt-dlp
 telebot
+yt-dlp==2023.11.16
