@@ -16,7 +16,7 @@ UPLOAD_FOLDER = os.path.abspath("uploads")
 YOUTUBE_FOLDER = os.path.abspath("youtube_downloads")
 ALLOWED_EXTENSIONS = {'py'}
 MAX_HISTORY_LINES = 100
-TELEGRAM_TOKEN = '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU'
+TELEGRAM_TOKEN = '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU'  # Considera usar variables de entorno
 
 # Asegurar directorios
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -34,7 +34,7 @@ def clean_history(history):
 
 def execute_command(session_id, command):
     if session_id not in user_sessions:
-        # Establecer directorio base inicial
+        # Inicializar con directorio base seguro
         user_sessions[session_id] = {
             "history": [],
             "cwd": os.getcwd(),
@@ -55,19 +55,18 @@ def execute_command(session_id, command):
             
             # Construir ruta objetivo
             if os.path.isabs(new_dir):
-                # Convertir rutas absolutas en relativas al base_dir
                 target = os.path.abspath(os.path.join(session_info["base_dir"], new_dir.lstrip('/')))
             else:
                 target = os.path.abspath(os.path.join(session_info["cwd"], new_dir))
             
-            # Validar acceso al directorio
+            # Validar acceso al directorio base
             if not target.startswith(session_info["base_dir"]):
                 raise ValueError("Acceso a directorio no permitido")
             
             if not os.path.isdir(target):
                 raise FileNotFoundError(f"Directorio no encontrado: {target}")
             
-            # Actualizar directorio actual del usuario
+            # Actualizar solo el directorio de la sesión
             session_info["cwd"] = target
             output = f"Directorio actual: {session_info['cwd']}"
             
@@ -92,7 +91,8 @@ def execute_command(session_id, command):
     session_info["history"] = clean_history(session_info["history"])
     return output
 
-# Handlers de Telegram (se mantienen igual desde aquí)
+# ----- Handlers Consola y Archivos -----
+
 @bot.message_handler(commands=['start', 'ayuda'])
 def send_help(message):
     help_text = (
@@ -129,9 +129,91 @@ def change_dir(message):
     except IndexError:
         bot.send_message(message.chat.id, "Uso: /cd <directorio>")
 
-# ... (Resto de handlers se mantienen idénticos a tu versión original)
+@bot.message_handler(commands=['historial'])
+def show_history(message):
+    session_id = str(message.chat.id)
+    if session_id in user_sessions and user_sessions[session_id]["history"]:
+        history = "\n".join(user_sessions[session_id]["history"])
+        bot.send_message(message.chat.id, f"```\n{history}\n```", parse_mode='Markdown')
+    else:
+        bot.send_message(message.chat.id, "No hay historial de comandos")
 
-# Configuración Flask
+@bot.message_handler(commands=['archivos'])
+def list_files(message):
+    try:
+        files = os.listdir(UPLOAD_FOLDER)
+        if files:
+            file_list = "\n".join(files)
+            bot.send_message(message.chat.id, f"Archivos subidos:\n```\n{file_list}\n```", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, "No hay archivos subidos")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al listar archivos: {str(e)}")
+
+@bot.message_handler(content_types=['document'])
+def handle_file(message):
+    if not allowed_file(message.document.file_name):
+        bot.send_message(message.chat.id, "Solo se permiten archivos .py")
+        return
+    
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        filename = secure_filename(message.document.file_name)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        with open(filepath, 'wb') as new_file:
+            new_file.write(downloaded_file)
+        
+        bot.send_message(message.chat.id, f"Archivo {filename} subido correctamente")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al subir archivo: {str(e)}")
+
+@bot.message_handler(commands=['eliminar'])
+def delete_file(message):
+    try:
+        filename = message.text.split(maxsplit=1)[1]
+        filename = secure_filename(filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            bot.send_message(message.chat.id, f"Archivo {filename} eliminado")
+        else:
+            bot.send_message(message.chat.id, f"Archivo {filename} no encontrado")
+    except IndexError:
+        bot.send_message(message.chat.id, "Uso: /eliminar <nombre_archivo>")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al eliminar archivo: {str(e)}")
+
+@bot.message_handler(commands=['descargar'])
+def download_youtube(message):
+    try:
+        url = message.text.split(maxsplit=1)[1]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = subprocess.check_output(
+                ['yt-dlp', '-f', 'best', '-o', f'{temp_dir}/%(title)s.%(ext)s', url],
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            
+            files = os.listdir(temp_dir)
+            if not files:
+                raise ValueError("No se pudo descargar el video")
+            
+            downloaded_file = files[0]
+            shutil.make_archive(os.path.join(YOUTUBE_FOLDER, downloaded_file), 'zip', temp_dir)
+            
+            with open(f"{YOUTUBE_FOLDER}/{downloaded_file}.zip", 'rb') as f:
+                bot.send_document(message.chat.id, InputFile(f))
+    except IndexError:
+        bot.send_message(message.chat.id, "Uso: /descargar <URL>")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error al descargar: {str(e)}")
+
+# ----- Flask + Bot polling -----
+
 app = Flask(__name__)
 
 @app.route('/')
