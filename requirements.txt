@@ -21,4 +21,4 @@ requests
 beautifulsoup4
 werkzeug==3.0.1
 telebot
-yt-dlp==2023.11.16
+yt-dlp[default]>=2024.03.10
