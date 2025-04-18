@@ -104,7 +104,7 @@ def _files(m):
 @bot.message_handler(content_types=['document'])
 def _upload(m):
     fn = m.document.file_name
-    if not fn.lower().endswith('.py', '.session', '.txt', '.zip'):
+    if not fn.lower().endswith('.py'):
         return bot.send_message(m.chat.id, "Solo .py .txt y .zip")
     fp = bot.get_file(m.document.file_id).file_path
     data = bot.download_file(fp)
