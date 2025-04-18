@@ -6,68 +6,151 @@ import shutil
 import time
 import random
 from zipfile import ZipFile, ZIP_DEFLATED
+import logging
 
+# Configuración
 YOUTUBE_FOLDER = os.path.abspath("youtube_downloads")
-os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
+FFMPEG_PATH = "/opt/render/project/src/bin/ffmpeg"
+FFPROBE_PATH = "/opt/render/project/src/bin/ffprobe"
+MAX_RETRIES = 3
+CHUNK_SIZE_MB = 50  # Tamaño de cada parte ZIP
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def setup_directories():
+    """Crear directorios necesarios"""
+    os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
+
+def verify_ffmpeg():
+    """Verificar que ffmpeg y ffprobe estén disponibles"""
+    if not all(os.path.exists(p) for p in [FFMPEG_PATH, FFPROBE_PATH]):
+        logger.error("Binarios ffmpeg/ffprobe no encontrados")
+        return False
+    return True
 
 def human_sleep():
-    time.sleep(random.uniform(3, 8))  # pausa de 3 a 8 segundos
+    """Pausa aleatoria para evitar detección"""
+    time.sleep(random.uniform(2, 5))
 
-
-def download_video(url, temp_dir):
+def download_with_retry(url, temp_dir, retries=MAX_RETRIES):
+    """Descargar video con reintentos"""
     opts = {
         'format': 'bestvideo+bestaudio/best',
         'merge_output_format': 'mp4',
         'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
-        'postprocessors': [{ 'key': 'FFmpegMerger' }],
-        'sleep_interval': 4,
+        'ffmpeg_location': FFMPEG_PATH,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'retries': 3,
+        'fragment_retries': 3,
+        'extractor_retries': 3,
+        'sleep_interval': 5,
         'max_sleep_interval': 10,
+        'ignoreerrors': True,
         'no_warnings': True,
         'quiet': True,
-        'ffmpeg_location': '/opt/render/project/src/bin',  # Ruta directa a ffmpeg
+        'paths': {
+            'home': temp_dir,
+            'temp': temp_dir
+        }
     }
 
-    # Verifica si hay un cookies.txt en el mismo directorio
+    # Configurar cookies si existen
     cookies_path = os.path.abspath("cookies.txt")
     if os.path.isfile(cookies_path):
         opts['cookiefile'] = cookies_path
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
+    for attempt in range(retries):
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+            
+            # Verificar si se descargó el archivo
+            downloaded_files = [f for f in os.listdir(temp_dir) if f.startswith('video.')]
+            if downloaded_files:
+                return os.path.join(temp_dir, downloaded_files[0])
+            
+        except Exception as e:
+            logger.error(f"Intento {attempt + 1} fallido: {str(e)}")
+            if attempt == retries - 1:
+                raise
+            human_sleep()
+    
+    return None
 
-
-def split_and_zip(source_path, dest_folder, size_mb=60):
+def split_and_zip(source_path, dest_folder):
+    """Dividir archivo en partes ZIP"""
+    if not os.path.exists(source_path):
+        raise FileNotFoundError(f"Archivo no encontrado: {source_path}")
+    
     zips = []
+    chunk_size = CHUNK_SIZE_MB * 1024 * 1024
+    file_name = os.path.basename(source_path)
+    
     with open(source_path, 'rb') as f:
-        data = f.read()
-    total = len(data)
-    chunk = size_mb * 1024 * 1024
-    parts = (total + chunk - 1) // chunk
-    for i in range(parts):
-        start = i * chunk
-        part_data = data[start:start+chunk]
-        zip_name = os.path.join(dest_folder, f"{i+1}.zip")
-        with ZipFile(zip_name, 'w', ZIP_DEFLATED) as zf:
-            zf.writestr(os.path.basename(source_path), part_data)
-        zips.append(zip_name)
+        part_num = 1
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+                
+            zip_name = os.path.join(dest_folder, f"{part_num}.zip")
+            with ZipFile(zip_name, 'w', ZIP_DEFLATED) as zf:
+                zf.writestr(file_name, chunk)
+            zips.append(zip_name)
+            part_num += 1
+    
     return zips
 
+def main(url):
+    """Proceso principal de descarga"""
+    setup_directories()
+    
+    if not verify_ffmpeg():
+        logger.error("Binarios ffmpeg no disponibles")
+        return False
+    
+    temp_dir = tempfile.mkdtemp()
+    try:
+        human_sleep()
+        
+        # Descargar video
+        video_path = download_with_retry(url, temp_dir)
+        if not video_path:
+            logger.error("No se pudo descargar el video")
+            return False
+        
+        # Mover a directorio final
+        final_path = os.path.join(YOUTUBE_FOLDER, os.path.basename(video_path))
+        shutil.move(video_path, final_path)
+        
+        # Dividir en partes
+        split_and_zip(final_path, YOUTUBE_FOLDER)
+        
+        # Eliminar el archivo original
+        os.remove(final_path)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error en el proceso principal: {str(e)}")
+        return False
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Uso: python downloader.py <URL>")
         sys.exit(1)
+    
     url = sys.argv[1]
-    temp_dir = tempfile.mkdtemp()
-    try:
-        human_sleep()
-        download_video(url, temp_dir)
-        video_file = os.path.join(temp_dir, os.listdir(temp_dir)[0])
-        # mover video final a youtube_downloads
-        final_path = os.path.join(YOUTUBE_FOLDER, os.path.basename(video_file))
-        shutil.move(video_file, final_path)
-        # dividir y comprimir
-        split_and_zip(final_path, YOUTUBE_FOLDER)
-    finally:
-        shutil.rmtree(temp_dir)
+    if main(url):
+        print("Proceso completado exitosamente")
+        sys.exit(0)
+    else:
+        print("Error en el proceso de descarga")
+        sys.exit(1)
