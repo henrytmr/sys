@@ -1,109 +1,92 @@
+#!/data/data/com.termux/files/usr/bin/env python3
 import sys
 import os
-import yt_dlp
-import tempfile
-import shutil
-import time
-import random
-from zipfile import ZipFile, ZIP_DEFLATED
+import asyncio
 import logging
+from urllib.parse import urlparse
+import ntplib
+from telethon import TelegramClient, errors
+from telethon.tl.types import DocumentAttributeFilename
 
-# Configuración
-YOUTUBE_FOLDER = os.path.abspath("youtube_downloads")
-CHUNK_SIZE = 50 * 1024 * 1024  # 50MB
-MAX_RETRIES = 3
+API_ID          = 29246871
+API_HASH        = '637091dfc0eee0e2c551fd832341e18b'
+PHONE_NUMBER    = '+5358964904'
+SESSION_NAME    = 'session'
+DOWNLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'Telegram_Downloads')
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+log = logging.getLogger(__name__)
 
-def configurar_ytdl():
-    """Configura yt-dlp con parámetros optimizados y cookies."""
-    # Ruta absoluta al cookies.txt en la carpeta del script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    cookie_path = os.path.join(script_dir, 'cookies.txt')
-
-    return yt_dlp.YoutubeDL({
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
-        'outtmpl': os.path.join(tempfile.gettempdir(), 'ytdl/%(title)s.%(ext)s'),
-        'ffmpeg_location': os.getenv('FFMPEG_PATH', '/opt/render/project/src/bin/ffmpeg'),
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-        'retries': MAX_RETRIES,
-        'fragment_retries': MAX_RETRIES,
-        'ignoreerrors': False,
-        'no_warnings': True,
-        'quiet': True,
-        # Forzar uso de cookies.txt siempre que exista
-        'cookiefile': cookie_path if os.path.isfile(cookie_path) else None,
-    })
-
-def descargar_video(url):
-    """Maneja la descarga con reintentos."""
-    ydl = configurar_ytdl()
-    for intento in range(MAX_RETRIES):
-        try:
-            info = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info)
-        except yt_dlp.DownloadError as e:
-            logger.error(f"Intento {intento+1} fallido: {str(e)}")
-            if intento == MAX_RETRIES - 1:
-                raise
-            time.sleep(random.randint(2, 5))
-    return None
-
-def dividir_zip(archivo_entrada, carpeta_salida):
-    """Divide el archivo en partes ZIP."""
-    nombre_base = os.path.basename(archivo_entrada)
-    partes = []
-
-    with open(archivo_entrada, 'rb') as f:
-        parte_num = 1
-        while True:
-            contenido = f.read(CHUNK_SIZE)
-            if not contenido:
-                break
-            nombre_zip = os.path.join(carpeta_salida, f"{parte_num}.zip")
-            with ZipFile(nombre_zip, 'w', ZIP_DEFLATED) as zf:
-                zf.writestr(nombre_base, contenido)
-            partes.append(nombre_zip)
-            parte_num += 1
-    return partes
-
-def main():
-    url = sys.argv[1]
-    os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
-
+def get_ntp_offset():
     try:
-        # Descargar video
-        video_path = descargar_video(url)
-        if not video_path or not os.path.exists(video_path):
-            logger.error("No se pudo obtener el video")
-            return False
+        c = ntplib.NTPClient()
+        r = c.request('pool.ntp.org')
+        log.info(f"NTP offset: {r.offset:.3f}s")
+        return r.offset
+    except:
+        return 0
 
-        # Mover a carpeta destino
-        destino = os.path.join(YOUTUBE_FOLDER, os.path.basename(video_path))
-        shutil.move(video_path, destino)
+async def main():
+    args = sys.argv[1:]
+    os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-        # Dividir y comprimir
-        dividir_zip(destino, YOUTUBE_FOLDER)
-        os.remove(destino)  # Eliminar original
+    if not args:
+        print("Uso: downloader.py --request-code OR --code <sms> <URL1> [URL...]", file=sys.stderr)
+        return
 
-        return True
-    except Exception as e:
-        logger.error(f"Error crítico: {str(e)}")
-        return False
+    client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+    await client.connect()
+
+    if args[0] == '--request-code':
+        await client.send_code_request(PHONE_NUMBER)
+        await client.disconnect()
+        print("SMS solicitado.")
+        return
+
+    if args[0] == '--code' and len(args) >= 3:
+        code = args[1]
+        urls = args[2:]
+    else:
+        print("Parámetros inválidos.", file=sys.stderr)
+        return
+
+    offset = get_ntp_offset()
+    try:
+        client.session.set_time_offset(int(offset))
+    except:
+        setattr(client._sender, '_time_offset', int(offset))
+
+    if not await client.is_user_authorized():
+        try:
+            await client.sign_in(PHONE_NUMBER, code)
+        except errors.SessionPasswordNeededError:
+            pw = input("2FA password: ")
+            await client.sign_in(password=pw)
+
+    for url in urls:
+        parsed = urlparse(url)
+        parts = parsed.path.strip('/').split('/')
+        if len(parts) < 2:
+            log.warning(f"URL inválida: {url}")
+            continue
+        chat, msg_id = parts[-2], int(parts[-1])
+        msg = await client.get_messages(chat, ids=msg_id)
+        if not msg or not msg.media:
+            log.info(f"Sin media en: {url}")
+            continue
+
+        fname = f"{chat}_{msg_id}"
+        if hasattr(msg, 'document'):
+            for attr in msg.document.attributes:
+                if isinstance(attr, DocumentAttributeFilename):
+                    fname = attr.file_name
+                    break
+
+        dest = os.path.join(DOWNLOAD_FOLDER, fname)
+        await msg.download_media(dest)
+        print(dest)
+
+    await client.disconnect()
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Uso: python downloader.py <URL>")
-        sys.exit(1)
-
-    if main():
-        print("Proceso exitoso")
-        sys.exit(0)
-    else:
-        print("Error en el proceso")
-        sys.exit(1)
+    asyncio.run(main())
