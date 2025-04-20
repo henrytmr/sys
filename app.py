@@ -6,41 +6,45 @@ import threading
 import tempfile
 import time
 import re
+
 from telebot import TeleBot
 from telebot.types import InputFile
 from flask import Flask
 from telethon.sync import TelegramClient
 from telethon.errors import ChannelPrivateError
 
-# Configuración
+# ——— Configuración ———
 SCRIPT_DIR            = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER         = os.path.join(SCRIPT_DIR, "uploads")
 YOUTUBE_FOLDER        = os.path.join(SCRIPT_DIR, "youtube_downloads")
-TELEGRAM_DL_FOLDER    = os.path.join(SCRIPT_DIR, "telegram_downloads")
+TELEGRAM_DL_FOLDER    = os.path.join(SCRIPT_DIR, "descargas_publicas")
 MAX_HISTORY_LINES     = 100
 
-# Tus credenciales
+# ——— Tus credenciales ———
 TELEGRAM_TOKEN = '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU'
-API_ID         = 29246871  # Reemplaza con tu API ID real
-API_HASH       = '637091dfc0eee0e2c551fd832341e18b'  # Reemplaza con tu API HASH real
+API_ID          = 29246871
+API_HASH        = '637091dfc0eee0e2c551fd832341e18b'
+SESSION_FILE    = 'user_session'
+PHONE           = '+5358964904'
 
-# Asegurar carpetas
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(YOUTUBE_FOLDER, exist_ok=True)
+# Crear carpetas si no existen
+os.makedirs(UPLOAD_FOLDER,      exist_ok=True)
+os.makedirs(YOUTUBE_FOLDER,     exist_ok=True)
 os.makedirs(TELEGRAM_DL_FOLDER, exist_ok=True)
 
 # Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Instancias
-bot = TeleBot(TELEGRAM_TOKEN)
-client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=TELEGRAM_TOKEN)
+# Instancias de bot y cliente
+bot    = TeleBot(TELEGRAM_TOKEN)
+client = TelegramClient(SESSION_FILE, API_ID, API_HASH).start(phone=PHONE)
 
+# Estado por usuario
 user_sessions = {}
 
 def send_help(message):
-    text = (
+    txt = (
         "Consola Web Bot\n\n"
         "/start, /ayuda               - Mostrar ayuda\n"
         "/ejecutar <cmd>              - Ejecutar en shell\n"
@@ -51,39 +55,37 @@ def send_help(message):
         "/eliminar <name>             - Borrar archivo subido\n"
         "/downloader <URL1> [URL2...] - Descargar YouTube o Telegram\n"
     )
-    bot.send_message(message.chat.id, text)
+    bot.send_message(message.chat.id, txt)
 
 def execute_command(uid, cmd):
     sess = user_sessions.setdefault(uid, {"cwd": SCRIPT_DIR, "hist": []})
-    output = ""
+    out = ""
     try:
         if cmd.startswith("cd "):
-            path = cmd[3:].strip()
-            new = os.path.abspath(os.path.join(sess["cwd"], path))
+            new = os.path.abspath(os.path.join(sess["cwd"], cmd[3:].strip()))
             if os.path.isdir(new):
                 sess["cwd"] = new
-                output = f"Directorio: {new}"
+                out = f"Directorio: {new}"
             else:
-                output = f"Error: {new} no existe"
+                out = f"Error: {new} no existe"
         else:
-            res = subprocess.run(cmd, shell=True, cwd=sess["cwd"],
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                 text=True, timeout=15)
-            output = res.stdout + res.stderr
+            r = subprocess.run(cmd, shell=True, cwd=sess["cwd"],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, timeout=15)
+            out = r.stdout + r.stderr
     except Exception as e:
-        output = f"Error: {e}"
-    sess["hist"].append(f"$ {cmd}\n{output}")
+        out = f"Error: {e}"
+    sess["hist"].append(f"$ {cmd}\n{out}")
     sess["hist"] = sess["hist"][-MAX_HISTORY_LINES:]
-    return output
+    return out
 
-@bot.message_handler(commands=['start', 'ayuda'])
-def _start(m):
-    send_help(m)
+@bot.message_handler(commands=['start','ayuda'])
+def _start(m): send_help(m)
 
 @bot.message_handler(commands=['ejecutar'])
 def _run(m):
     try:
-        cmd = m.text.split(' ', 1)[1]
+        cmd = m.text.split(' ',1)[1]
         out = execute_command(str(m.chat.id), cmd)
         bot.send_message(m.chat.id, f"```\n{out}\n```", parse_mode='Markdown')
     except:
@@ -92,7 +94,7 @@ def _run(m):
 @bot.message_handler(commands=['cd'])
 def _cd(m):
     try:
-        path = m.text.split(' ', 1)[1]
+        path = m.text.split(' ',1)[1]
         out = execute_command(str(m.chat.id), f"cd {path}")
         bot.send_message(m.chat.id, out)
     except:
@@ -100,9 +102,9 @@ def _cd(m):
 
 @bot.message_handler(commands=['historial'])
 def _hist(m):
-    hist = user_sessions.get(str(m.chat.id), {}).get("hist", [])
-    if hist:
-        bot.send_message(m.chat.id, "```\n" + "\n".join(hist) + "\n```", parse_mode='Markdown')
+    h = user_sessions.get(str(m.chat.id), {}).get("hist", [])
+    if h:
+        bot.send_message(m.chat.id, "```\n" + "\n".join(h) + "\n```", parse_mode='Markdown')
     else:
         bot.send_message(m.chat.id, "No hay historial")
 
@@ -122,14 +124,13 @@ def _upload(m):
     fp = bot.get_file(m.document.file_id).file_path
     data = bot.download_file(fp)
     dst = os.path.join(UPLOAD_FOLDER, fn)
-    with open(dst, 'wb') as f:
-        f.write(data)
+    with open(dst,'wb') as f: f.write(data)
     bot.send_message(m.chat.id, f"Subido: {fn}")
 
 @bot.message_handler(commands=['eliminar'])
 def _del(m):
     try:
-        fn = m.text.split(' ', 1)[1]
+        fn = m.text.split(' ',1)[1]
         p = os.path.join(UPLOAD_FOLDER, fn)
         if os.path.exists(p):
             os.remove(p)
@@ -143,55 +144,48 @@ def download_telegram_media(url):
     m = re.match(r'https?://t\\.me/(?:s/)?([A-Za-z0-9_]+)/(\\d+)', url)
     if not m:
         raise ValueError("Enlace Telegram no soportado")
-    username, msg_id = m.groups()
-    msg_id = int(msg_id)
-    try:
-        channel = client.get_entity(username)
-    except ValueError:
-        raise
-    except ChannelPrivateError:
-        raise PermissionError("No tengo permiso para este canal")
-    message = client.get_messages(channel, ids=msg_id)
-    if not message or not message.media:
+    user, mid = m.groups()
+    msg = client.get_messages(user, ids=int(mid))
+    if not msg or not msg.media:
         raise ValueError("Ese mensaje no contiene medios")
-    file_ext = message.file.ext or 'mp4'
-    filename = f"{username}_{msg_id}.{file_ext}"
-    dest = os.path.join(TELEGRAM_DL_FOLDER, filename)
-    client.download_media(message, file=dest)
-    return dest
+    ext = msg.file.ext or 'mp4'
+    fn  = f"{user}_{mid}.{ext}"
+    dst = os.path.join(TELEGRAM_DL_FOLDER, fn)
+    client.download_media(msg, file=dst)
+    return dst
 
 @bot.message_handler(commands=['downloader'])
 def _downloader(m):
-    parts = m.text.split()[1:]
-    if not parts:
+    urls = m.text.split()[1:]
+    if not urls:
         return bot.send_message(m.chat.id, "Uso: /downloader <URL1> [URL2 ...]")
-    for url in parts:
+    for url in urls:
         if 't.me/' in url:
             bot.send_message(m.chat.id, f"🔍 Descargando de Telegram: {url}")
             try:
-                path = download_telegram_media(url)
-                bot.send_document(m.chat.id, InputFile(path), caption=os.path.basename(path))
+                fpath = download_telegram_media(url)
+                bot.send_document(m.chat.id, InputFile(fpath), caption=os.path.basename(fpath))
             except Exception as e:
                 bot.send_message(m.chat.id, f"Error Telegram: {e}")
         else:
             bot.send_message(m.chat.id, f"🔍 Descargando de YouTube: {url}")
             try:
+                # limpiar previos
                 for f in os.listdir(YOUTUBE_FOLDER):
                     if f.endswith('.zip'):
                         os.remove(os.path.join(YOUTUBE_FOLDER, f))
                 dp = os.path.join(SCRIPT_DIR, 'downloader.py')
-                res = subprocess.run([sys.executable, dp, url],
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     text=True, timeout=600)
-                if res.returncode != 0:
-                    raise Exception(res.stderr.strip())
-                zips = sorted(f for f in os.listdir(YOUTUBE_FOLDER) if f.endswith('.zip'))
-                for z in zips:
+                r = subprocess.run([sys.executable, dp, url],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, timeout=600)
+                if r.returncode != 0:
+                    raise Exception(r.stderr.strip())
+                for z in sorted(f for f in os.listdir(YOUTUBE_FOLDER) if f.endswith('.zip')):
                     bot.send_document(m.chat.id, InputFile(os.path.join(YOUTUBE_FOLDER, z)), caption=z)
             except Exception as e:
                 bot.send_message(m.chat.id, f"Error YouTube: {e}")
 
-# Keep-alive con Flask
+# Keep‑alive con Flask
 app = Flask(__name__)
 @app.route('/')
 def home():
