@@ -1,12 +1,10 @@
+#!/usr/bin/env python3
 import os
 import sys
 import subprocess
 import logging
 import threading
-import tempfile
-import time
 import re
-
 from telebot import TeleBot
 from telebot.types import InputFile
 from flask import Flask
@@ -14,20 +12,18 @@ from telethon.sync import TelegramClient
 from telethon.errors import ChannelPrivateError
 
 # ——— Configuración ———
-SCRIPT_DIR            = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER         = os.path.join(SCRIPT_DIR, "uploads")
-YOUTUBE_FOLDER        = os.path.join(SCRIPT_DIR, "youtube_downloads")
-TELEGRAM_DL_FOLDER    = os.path.join(SCRIPT_DIR, "descargas_publicas")
-MAX_HISTORY_LINES     = 100
+SCRIPT_DIR         = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER      = os.path.join(SCRIPT_DIR, "uploads")
+YOUTUBE_FOLDER     = os.path.join(SCRIPT_DIR, "youtube_downloads")
+TELEGRAM_DL_FOLDER = os.path.join(SCRIPT_DIR, "descargas_publicas")
+MAX_HISTORY_LINES  = 100
 
 # ——— Tus credenciales ———
 TELEGRAM_TOKEN = '6998654254:AAG-6_xNjBI0fAfa5v8iMLA4o0KDwkmy_JU'
-API_ID          = 29246871
-API_HASH        = '637091dfc0eee0e2c551fd832341e18b'
-SESSION_FILE    = 'user_session'
-PHONE           = '+5358964904'
+API_ID         = 29246871
+API_HASH       = '637091dfc0eee0e2c551fd832341e18b'
 
-# Crear carpetas si no existen
+# Crear carpetas
 os.makedirs(UPLOAD_FOLDER,      exist_ok=True)
 os.makedirs(YOUTUBE_FOLDER,     exist_ok=True)
 os.makedirs(TELEGRAM_DL_FOLDER, exist_ok=True)
@@ -36,9 +32,10 @@ os.makedirs(TELEGRAM_DL_FOLDER, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Instancias de bot y cliente
-bot    = TeleBot(TELEGRAM_TOKEN)
-client = TelegramClient(SESSION_FILE, API_ID, API_HASH).start(phone=PHONE)
+# Instancias
+bot = TeleBot(TELEGRAM_TOKEN)
+# Telethon en modo bot para no pedir código
+client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=TELEGRAM_TOKEN)
 
 # Estado por usuario
 user_sessions = {}
@@ -80,7 +77,8 @@ def execute_command(uid, cmd):
     return out
 
 @bot.message_handler(commands=['start','ayuda'])
-def _start(m): send_help(m)
+def _start(m):
+    send_help(m)
 
 @bot.message_handler(commands=['ejecutar'])
 def _run(m):
@@ -158,7 +156,7 @@ def download_telegram_media(url):
 def _downloader(m):
     urls = m.text.split()[1:]
     if not urls:
-        return bot.send_message(m.chat.id, "Uso: /downloader <URL1> [URL2 ...]")
+        return bot.send_message(m.chat.id, "Uso: /downloader <URL1> [URL2...]")
     for url in urls:
         if 't.me/' in url:
             bot.send_message(m.chat.id, f"🔍 Descargando de Telegram: {url}")
