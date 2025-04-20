@@ -8,6 +8,7 @@ import ntplib
 from telethon import TelegramClient, errors
 from telethon.tl.types import DocumentAttributeFilename
 
+# Credenciales
 API_ID          = 29246871
 API_HASH        = '637091dfc0eee0e2c551fd832341e18b'
 PHONE_NUMBER    = '+5358964904'
@@ -37,12 +38,14 @@ async def main():
     client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
     await client.connect()
 
+    # 1) Solo solicitar SMS
     if args[0] == '--request-code':
         await client.send_code_request(PHONE_NUMBER)
         await client.disconnect()
         print("SMS solicitado.")
         return
 
+    # 2) Autenticar con código y descargar URLs
     if args[0] == '--code' and len(args) >= 3:
         code = args[1]
         urls = args[2:]
@@ -70,21 +73,17 @@ async def main():
             log.warning(f"URL inválida: {url}")
             continue
         chat, msg_id = parts[-2], int(parts[-1])
-        msg = await client.get_messages(chat, ids=msg_id)
+
+        entity = await client.get_entity(chat)
+        msg = await client.get_messages(entity, ids=msg_id)
         if not msg or not msg.media:
             log.info(f"Sin media en: {url}")
             continue
 
-        fname = f"{chat}_{msg_id}"
-        if hasattr(msg, 'document'):
-            for attr in msg.document.attributes:
-                if isinstance(attr, DocumentAttributeFilename):
-                    fname = attr.file_name
-                    break
-
-        dest = os.path.join(DOWNLOAD_FOLDER, fname)
-        await msg.download_media(dest)
-        print(dest)
+        # Guardar en DOWNLOAD_FOLDER (Telethon asigna nombre con extensión)
+        saved = await msg.download_media(DOWNLOAD_FOLDER)
+        log.info(f"Descargado: {saved}")
+        print(saved)
 
     await client.disconnect()
 
