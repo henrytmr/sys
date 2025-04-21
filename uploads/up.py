@@ -9,7 +9,7 @@ from http.client import RemoteDisconnected
 MOODLE_URL = "https://cursosonline.etecsa.cu/"
 USERNAME = "luisernestorb95"
 PASSWORD = "Luisito1995*"
-FILE_PATH = "Hola.zip"
+FILE_PATH = "Holi.zip"
 REQUEST_TIMEOUT = 10
 DEBUG = True
 

@@ -7,7 +7,7 @@ LOGIN_URL = f"{MOODLE_URL}login/index.php"
 USERNAME = "luisernestorb95"
 PASSWORD = "Luisito1995*"
 FILE_URL = "https://cursosonline.etecsa.cu/draftfile.php/4405/user/draft/631290860/sys.zip"
-OUTPUT_FILE = "Hola.zip"
+OUTPUT_FILE = "Holi.zip"
 TIMEOUT = 10
 
 def login_moodle(session):
