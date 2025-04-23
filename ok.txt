@@ -1,3 +1,76 @@
+Solicitud de borrar
+
+GET /lib/ajax/service-nologin.php?info=core_output_load_template_with_dependencies&cachekey=1727115153&args=%5B%7B%22index%22%3A0%2C%22methodname%22%3A%22core_output_load_template_with_dependencies%22%2C%22args%22%3A%7B%22component%22%3A%22core%22%2C%22template%22%3A%22modal_save_cancel%22%2C%22themename%22%3A%22moove%22%2C%22lang%22%3A%22es%22%7D%7D%5D HTTP/1.1
+Host: aulavirtual.elacm.sld.cu
+Cookie: MoodleSession=tpit96480mc70d9acqv21m1f0g; MOODLEID1_=4F%25AE%25F2c5%25F2%25BC%25E8Y%2593%258D%25A3%25D0m
+Sec-Ch-Ua-Platform: "Windows"
+Accept-Language: es-ES,es;q=0.9
+Sec-Ch-Ua: "Chromium";v="135", "Not-A.Brand";v="8"
+Sec-Ch-Ua-Mobile: ?0
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+Content-Type: application/json
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: cors
+Sec-Fetch-Dest: empty
+Referer: https://aulavirtual.elacm.sld.cu/user/files.php
+Accept-Encoding: gzip, deflate, br
+Priority: u=1, i
+Connection: keep-alive
+
+
+Solicitud de confirmar borrado 
+
+POST /repository/draftfiles_ajax.php?action=delete HTTP/1.1
+Host: aulavirtual.elacm.sld.cu
+Cookie: MoodleSession=tpit96480mc70d9acqv21m1f0g; MOODLEID1_=4F%25AE%25F2c5%25F2%25BC%25E8Y%2593%258D%25A3%25D0m
+Content-Length: 89
+Sec-Ch-Ua-Platform: "Windows"
+X-Requested-With: XMLHttpRequest
+Accept-Language: es-ES,es;q=0.9
+Sec-Ch-Ua: "Chromium";v="135", "Not-A.Brand";v="8"
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+Sec-Ch-Ua-Mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+Accept: */*
+Origin: https://aulavirtual.elacm.sld.cu
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: cors
+Sec-Fetch-Dest: empty
+Referer: https://aulavirtual.elacm.sld.cu/user/files.php
+Accept-Encoding: gzip, deflate, br
+Priority: u=1, i
+Connection: keep-alive
+
+sesskey=AYCksbvB1j&client_id=68092c13b68ae&filepath=%2F&itemid=293106421&filename=prb.zip
+
+
+
+POST /repository/draftfiles_ajax.php?action=list HTTP/1.1
+Host: aulavirtual.elacm.sld.cu
+Cookie: MoodleSession=tpit96480mc70d9acqv21m1f0g; MOODLEID1_=4F%25AE%25F2c5%25F2%25BC%25E8Y%2593%258D%25A3%25D0m
+Content-Length: 72
+Sec-Ch-Ua-Platform: "Windows"
+X-Requested-With: XMLHttpRequest
+Accept-Language: es-ES,es;q=0.9
+Sec-Ch-Ua: "Chromium";v="135", "Not-A.Brand";v="8"
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+Sec-Ch-Ua-Mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36
+Accept: */*
+Origin: https://aulavirtual.elacm.sld.cu
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: cors
+Sec-Fetch-Dest: empty
+Referer: https://aulavirtual.elacm.sld.cu/user/files.php
+Accept-Encoding: gzip, deflate, br
+Priority: u=1, i
+Connection: keep-alive
+
+sesskey=AYCksbvB1j&client_id=68092c13b68ae&filepath=%2F&itemid=293106421
+
+
 <script>
 //<![CDATA[
 (function() {M.util.help_popups.setup(Y);
